@@ -64,10 +64,9 @@
   </div>
 </header>
 
-<!-- HERO SLIDER -->
-<section class="hero-slider" id="home">
-  <div class="slider-track" id="slider-track">
-    <!-- Slides injected by JS -->
+<!-- HERO WELCOME (static, always on top) -->
+<section class="hero-slider hero-welcome" id="home">
+  <div class="slider-track">
     <div class="slide-placeholder">
       <div class="slide-content">
         <h2>🎓 Chào mừng đến với</h2>
@@ -79,6 +78,13 @@
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- PHOTO SLIDER (runs below the welcome hero) -->
+<section class="hero-slider photo-slider" id="photo-slider" style="display:none">
+  <div class="slider-track" id="slider-track">
+    <!-- Slides injected by JS -->
   </div>
   <button class="slider-btn slider-prev" id="slider-prev" onclick="changeSlide(-1)"><i class="fas fa-chevron-left"></i></button>
   <button class="slider-btn slider-next" id="slider-next" onclick="changeSlide(1)"><i class="fas fa-chevron-right"></i></button>
