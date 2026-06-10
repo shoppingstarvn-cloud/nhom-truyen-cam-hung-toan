@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nhóm Học Liệu Giáo Viên</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header" id="header">
+  <div class="header-top">
+    <div class="container">
+      <div class="header-top-inner">
+        <div class="header-contact">
+          <span id="h-phone"><i class="fas fa-phone"></i> <span id="site-phone"></span></span>
+          <span id="h-email"><i class="fas fa-envelope"></i> <span id="site-email"></span></span>
+        </div>
+        <div class="header-social" id="header-social"></div>
+        <div class="header-auth">
+          <div id="auth-guest" style="display:none">
+            <button class="btn-login" onclick="openLoginModal()"><i class="fas fa-sign-in-alt"></i> Đăng nhập</button>
+          </div>
+          <div id="auth-user" style="display:none">
+            <div class="user-menu">
+              <img id="user-avatar" src="/images/default-avatar.png" class="user-avatar-sm" alt="">
+              <span id="user-name"></span>
+              <div class="user-dropdown">
+                <a href="#" id="admin-link" style="display:none" onclick="window.open('/admin','_blank')"><i class="fas fa-cog"></i> Quản trị</a>
+                <a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="header-main">
+    <div class="container">
+      <div class="header-main-inner">
+        <div class="logo-area">
+          <img id="site-logo" src="/images/logo-placeholder.png" onerror="this.style.display='none'" alt="">
+          <div class="logo-text">
+            <h1 id="site-name">Nhóm Học Liệu Giáo Viên</h1>
+            <p id="site-tagline">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</p>
+          </div>
+        </div>
+        <nav class="main-nav">
+          <button class="nav-toggle" onclick="toggleNav()"><i class="fas fa-bars"></i></button>
+          <ul class="nav-list" id="nav-list">
+            <li><a href="#home">Trang chủ</a></li>
+            <li><a href="#resources">Kho tài nguyên</a></li>
+            <li><a href="#gallery">Hình ảnh</a></li>
+            <li><a href="#videos">Video</a></li>
+            <li><a href="#teachers">Thầy Cô</a></li>
+            <li><a href="#news">Tin tức</a></li>
+            <li><a href="#contact">Liên hệ</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- HERO SLIDER -->
+<section class="hero-slider" id="home">
+  <div class="slider-track" id="slider-track">
+    <!-- Slides injected by JS -->
+    <div class="slide-placeholder">
+      <div class="slide-content">
+        <h2>🎓 Chào mừng đến với</h2>
+        <h1 id="hero-title">Nhóm Học Liệu Giáo Viên</h1>
+        <p id="hero-tagline">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</p>
+        <div class="hero-btns">
+          <a href="#resources" class="btn-hero-primary">Khám phá kho tài nguyên</a>
+          <a href="#teachers" class="btn-hero-outline">Gặp gỡ Thầy Cô</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button class="slider-btn slider-prev" id="slider-prev" onclick="changeSlide(-1)"><i class="fas fa-chevron-left"></i></button>
+  <button class="slider-btn slider-next" id="slider-next" onclick="changeSlide(1)"><i class="fas fa-chevron-right"></i></button>
+  <div class="slider-dots" id="slider-dots"></div>
+</section>
+
+<!-- STATS BAR -->
+<section class="stats-bar">
+  <div class="container">
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-item"><i class="fas fa-book"></i><span class="stat-num" id="stat-resources">0</span><span>Tài liệu</span></div>
+      <div class="stat-item"><i class="fas fa-camera"></i><span class="stat-num" id="stat-photos">0</span><span>Hình ảnh</span></div>
+      <div class="stat-item"><i class="fas fa-video"></i><span class="stat-num" id="stat-videos">0</span><span>Video</span></div>
+      <div class="stat-item"><i class="fas fa-chalkboard-teacher"></i><span class="stat-num" id="stat-teachers">0</span><span>Thầy Cô</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- QUICK ACCESS BUTTONS -->
+<section class="quick-access" id="resources">
+  <div class="container">
+    <div class="section-header">
+      <h2>🗂️ Kho Tài Nguyên</h2>
+      <p>Truy cập nhanh các kho tài liệu của nhóm</p>
+    </div>
+    <div class="resource-grid" id="resource-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- CUSTOM NAV BUTTONS -->
+<section class="nav-buttons-section">
+  <div class="container">
+    <div class="section-header">
+      <h2>🔗 Truy cập nhanh</h2>
+      <p>Các liên kết và công cụ hữu ích</p>
+    </div>
+    <div class="nav-buttons-grid" id="nav-buttons-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- PHOTO GALLERY -->
+<section class="gallery-section" id="gallery">
+  <div class="container">
+    <div class="section-header">
+      <h2>📸 Hình ảnh hoạt động</h2>
+      <p>Khoảnh khắc đáng nhớ của nhóm</p>
+    </div>
+    <div class="album-tabs" id="album-tabs"></div>
+    <div class="photo-grid" id="photo-grid">
+      <!-- Injected by JS -->
+    </div>
+    <div class="section-footer">
+      <button class="btn-load-more" id="load-more-photos" onclick="loadMorePhotos()">Xem thêm ảnh <i class="fas fa-arrow-right"></i></button>
+    </div>
+  </div>
+</section>
+
+<!-- VIDEOS -->
+<section class="video-section" id="videos">
+  <div class="container">
+    <div class="section-header">
+      <h2>🎬 Video hoạt động</h2>
+      <p>Ghi lại những khoảnh khắc ý nghĩa</p>
+    </div>
+    <div class="video-grid" id="video-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- TEACHERS -->
+<section class="teachers-section" id="teachers">
+  <div class="container">
+    <div class="section-header">
+      <h2>👨‍🏫 Thành viên nhóm</h2>
+      <p>Đội ngũ Thầy Cô tài năng và tâm huyết</p>
+    </div>
+    <div class="teachers-grid" id="teachers-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- CHATBOX LINKS -->
+<section class="chatbox-section" id="chatbox">
+  <div class="container">
+    <div class="section-header">
+      <h2>💬 Hỏi đáp & Luyện tập</h2>
+      <p>Chat box hỏi đáp và luyện đề cho học sinh</p>
+    </div>
+    <div class="chatbox-grid" id="chatbox-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- NEWS -->
+<section class="news-section" id="news">
+  <div class="container">
+    <div class="section-header">
+      <h2>📰 Tin tức & Thông báo</h2>
+      <p>Cập nhật mới nhất từ nhóm</p>
+    </div>
+    <div class="news-grid" id="news-grid">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer" id="contact">
+  <div class="footer-main">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <h3 id="footer-site-name">Nhóm Học Liệu Giáo Viên</h3>
+          <p id="footer-tagline">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</p>
+          <div class="footer-social" id="footer-social"></div>
+        </div>
+        <div class="footer-col">
+          <h4>Kho tài nguyên</h4>
+          <ul id="footer-resources"></ul>
+        </div>
+        <div class="footer-col">
+          <h4>Liên hệ</h4>
+          <p><i class="fas fa-envelope"></i> <span id="footer-email"></span></p>
+          <p><i class="fas fa-phone"></i> <span id="footer-phone"></span></p>
+        </div>
+        <div class="footer-col">
+          <h4>Thành viên</h4>
+          <p><a href="#" onclick="openLoginModal()"><i class="fas fa-sign-in-alt"></i> Đăng nhập</a></p>
+          <p><a href="/admin" target="_blank"><i class="fas fa-cog"></i> Quản trị Admin</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div class="container">
+      <p id="footer-text">© 2024 Nhóm Học Liệu Giáo Viên. All rights reserved.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- BACK TO TOP -->
+<button class="back-to-top" id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fas fa-chevron-up"></i></button>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="login-modal" onclick="closeLoginModal(event)">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeLoginModal()"><i class="fas fa-times"></i></button>
+    <div class="modal-logo">🎓</div>
+    <h2>Đăng nhập</h2>
+    <p>Truy cập tài nguyên dành cho thành viên</p>
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label><i class="fas fa-user"></i> Tên đăng nhập</label>
+        <input type="text" id="login-username" placeholder="Nhập tên đăng nhập" required>
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-lock"></i> Mật khẩu</label>
+        <input type="password" id="login-password" placeholder="Nhập mật khẩu" required>
+      </div>
+      <div id="login-error" class="form-error" style="display:none"></div>
+      <button type="submit" class="btn-submit" id="login-btn">Đăng nhập</button>
+    </form>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lightbox-close" onclick="closeLightbox()"><i class="fas fa-times"></i></button>
+  <button class="lightbox-prev" onclick="lightboxNav(-1)"><i class="fas fa-chevron-left"></i></button>
+  <img class="lightbox-img" id="lightbox-img" src="" alt="">
+  <button class="lightbox-next" onclick="lightboxNav(1)"><i class="fas fa-chevron-right"></i></button>
+  <p class="lightbox-caption" id="lightbox-caption"></p>
+</div>
+
+<!-- VIDEO MODAL -->
+<div class="modal-overlay" id="video-modal" onclick="closeVideoModal(event)">
+  <div class="modal-box modal-video">
+    <button class="modal-close" onclick="closeVideoModal()"><i class="fas fa-times"></i></button>
+    <div class="video-wrapper" id="video-wrapper"></div>
+  </div>
+</div>
+
+<script src="/js/main.js"></script>
+</body>
+</html>

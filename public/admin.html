@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Nhóm Học Liệu Giáo Viên</title>
+<link rel="stylesheet" href="/css/admin.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<!-- LOGIN SCREEN -->
+<div id="admin-login" class="admin-login">
+  <div class="login-card">
+    <div class="login-logo">🎓</div>
+    <h1>Admin Dashboard</h1>
+    <p>Nhóm Học Liệu Giáo Viên</p>
+    <form onsubmit="adminLogin(event)">
+      <div class="a-form-group">
+        <label><i class="fas fa-user"></i> Tên đăng nhập</label>
+        <input type="text" id="a-username" placeholder="Nhập tên đăng nhập" required>
+      </div>
+      <div class="a-form-group">
+        <label><i class="fas fa-lock"></i> Mật khẩu</label>
+        <input type="password" id="a-password" placeholder="Nhập mật khẩu" required>
+      </div>
+      <div id="a-login-error" class="a-error" style="display:none"></div>
+      <button type="submit" class="a-btn-primary" id="a-login-btn" style="width:100%">Đăng nhập</button>
+    </form>
+    <div style="margin-top:16px;text-align:center"><a href="/" style="color:#6b7280;font-size:13px"><i class="fas fa-arrow-left"></i> Về trang chủ</a></div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="admin-panel" style="display:none">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🎓</div>
+      <div>
+        <div class="sidebar-title">Admin Panel</div>
+        <div class="sidebar-subtitle" id="admin-role-badge">---</div>
+      </div>
+      <button class="sidebar-toggle-btn" onclick="toggleSidebar()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="sidebar-user">
+      <img id="a-user-avatar" src="/images/default-avatar.png" class="sidebar-avatar" alt="">
+      <div>
+        <div id="a-user-name" style="font-weight:700;font-size:14px;color:#fff"></div>
+        <div id="a-user-role" style="font-size:12px;color:#94a3b8"></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Tổng quan</div>
+      <a href="#" class="nav-item active" onclick="showPage('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</a>
+      <div class="nav-section-title">Nội dung</div>
+      <a href="#" class="nav-item" onclick="showPage('posts')"><i class="fas fa-newspaper"></i> Bài viết & Tin tức</a>
+      <a href="#" class="nav-item" onclick="showPage('photos')"><i class="fas fa-images"></i> Hình ảnh</a>
+      <a href="#" class="nav-item" onclick="showPage('albums')"><i class="fas fa-folder-open"></i> Album ảnh</a>
+      <a href="#" class="nav-item" onclick="showPage('videos')"><i class="fas fa-video"></i> Video</a>
+      <div class="nav-section-title">Tài nguyên</div>
+      <a href="#" class="nav-item" onclick="showPage('resources')"><i class="fas fa-book"></i> Kho tài liệu</a>
+      <a href="#" class="nav-item" onclick="showPage('categories')"><i class="fas fa-folder"></i> Danh mục tài nguyên</a>
+      <a href="#" class="nav-item" onclick="showPage('nav-buttons')"><i class="fas fa-th-large"></i> Phím truy cập</a>
+      <a href="#" class="nav-item" onclick="showPage('chatbox')"><i class="fas fa-comments"></i> ChatBox Links</a>
+      <div class="nav-section-title">Thành viên</div>
+      <a href="#" class="nav-item" onclick="showPage('teachers')"><i class="fas fa-chalkboard-teacher"></i> Hồ sơ Thầy Cô</a>
+      <a href="#" class="nav-item admin-only" onclick="showPage('users')"><i class="fas fa-users"></i> Quản lý Users</a>
+      <div class="nav-section-title">Cài đặt</div>
+      <a href="#" class="nav-item" onclick="showPage('slider')"><i class="fas fa-sliders-h"></i> Slider & Ảnh bìa</a>
+      <a href="#" class="nav-item admin-only" onclick="showPage('settings')"><i class="fas fa-cog"></i> Cài đặt Website</a>
+      <div style="border-top:1px solid rgba(255,255,255,.1);margin:16px 0"></div>
+      <a href="/" target="_blank" class="nav-item"><i class="fas fa-external-link-alt"></i> Xem trang chủ</a>
+      <a href="#" class="nav-item" onclick="adminLogout()"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
+    </nav>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="admin-main" id="admin-main">
+    <div class="admin-topbar">
+      <button class="topbar-menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+      <div id="page-title" class="topbar-title">Dashboard</div>
+      <div class="topbar-right">
+        <span id="topbar-user"><i class="fas fa-user-circle"></i> <span id="topbar-name"></span></span>
+      </div>
+    </div>
+
+    <div id="page-content" class="page-content">
+      <!-- Pages injected by JS -->
+    </div>
+  </main>
+</div>
+
+<!-- GLOBAL MODAL -->
+<div class="a-modal-overlay" id="a-modal" onclick="closeAModal(event)">
+  <div class="a-modal-box" id="a-modal-box">
+    <button class="a-modal-close" onclick="closeAModal()"><i class="fas fa-times"></i></button>
+    <h2 id="a-modal-title" style="margin-bottom:20px;color:var(--a-primary)"></h2>
+    <div id="a-modal-body"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>
