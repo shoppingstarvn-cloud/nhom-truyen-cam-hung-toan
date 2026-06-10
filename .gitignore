@@ -1,0 +1,10 @@
+node_modules/
+database/edu_database.db
+database/edu_database.db-shm
+database/edu_database.db-wal
+uploads/
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
