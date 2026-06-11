@@ -363,3 +363,27 @@ section { padding: 70px 0; }
   .btn-hero-primary, .btn-hero-outline { text-align: center; }
   .resource-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===== HERO TEXT BLOCK ABOVE PHOTO SLIDER (v2) ===== */
+.hero-welcome { height: auto; }
+.hero-welcome .slider-track { height: auto; }
+.hero-welcome .slide-placeholder { height: auto; padding: 64px 20px 56px; display: block; }
+.hero-welcome .slide-content { position: static; transform: none; left: auto; right: auto; max-width: 920px; margin: 0 auto; text-align: center; }
+.hero-welcome .hero-btns { justify-content: center; }
+
+/* Slogan: 2 lines, one idea per line */
+#hero-tagline { margin-bottom: 28px; }
+#hero-tagline .tagline-line { display: block; }
+#hero-tagline .tagline-line:first-child { font-size: clamp(17px, 2.2vw, 22px); font-weight: 600; color: #fde68a; opacity: 1; margin-bottom: 6px; }
+#hero-tagline .tagline-line + .tagline-line { font-size: clamp(14px, 1.6vw, 17px); opacity: 0.92; letter-spacing: 0.4px; }
+
+/* Photo slider: clean images, no dark text overlay — just a subtle bottom fade for the dots */
+.photo-slider .slide::after { background: linear-gradient(to top, rgba(10,25,55,0.35) 0%, rgba(10,25,55,0) 25%); }
+
+@media (max-width: 768px) {
+  .hero-welcome { height: auto; }
+  .hero-welcome .slide-placeholder { padding: 44px 16px 40px; }
+}
+@media (max-width: 480px) {
+  .hero-welcome { height: auto; }
+}
