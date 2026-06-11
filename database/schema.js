@@ -1,8 +1,12 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const db = new Database(path.join(__dirname, 'edu_database.db'));
+// Persistent data dir (Railway Volume): set DATA_DIR=/data
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const db = new Database(path.join(DATA_DIR, 'edu_database.db'));
 
 function initDatabase() {
   db.exec(`
