@@ -12,6 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'edu_secret_key_2024_nexus';
 
+// Persistent data dir (Railway Volume): set DATA_DIR=/data
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
 // Init DB
 initDatabase();
 
@@ -19,13 +24,13 @@ initDatabase();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const type = req.query.type || 'general';
-    const dir = path.join(__dirname, 'uploads', type);
+    const dir = path.join(UPLOADS_DIR, type);
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
