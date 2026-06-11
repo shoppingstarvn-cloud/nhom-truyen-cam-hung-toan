@@ -147,7 +147,7 @@ async function loadSlider() {
     ]);
     sliderPhotos = photos;
     sliderSettings = settings;
-    const hero = document.querySelector('.hero-slider');
+    const hero = document.getElementById('photo-slider') || document.querySelector('.hero-slider');
     const siteName = getEl('site-name')?.textContent || 'NHÓM TRUYỀN CẢM HỨNG TOÁN';
     const siteTag  = getEl('site-tagline')?.textContent || '';
 
@@ -156,22 +156,11 @@ async function loadSlider() {
     if (!trackEl) return;
 
     if (!photos.length) {
-      trackEl.innerHTML = `<div class="slide-placeholder">
-        <div class="slide-content">
-          <h2>🎓 Chào mừng đến với</h2>
-          <h1>${siteName}</h1>
-          <p>${siteTag}</p>
-          <div class="hero-btns">
-            <a href="#resources" class="btn-hero-primary">Khám phá kho tài nguyên</a>
-            <a href="#teachers" class="btn-hero-outline">Gặp gỡ Thầy Cô</a>
-          </div>
-        </div>
-      </div>`;
-      getEl('slider-prev').style.display = 'none';
-      getEl('slider-next').style.display = 'none';
-      getEl('slider-dots').style.display = 'none';
+      // No slides yet: hide the photo slider section (welcome hero is static above)
+      if (hero) hero.style.display = 'none';
       return;
     }
+    if (hero) hero.style.display = '';
 
     trackEl.innerHTML = photos.map((p) => `
       <div class="slide" style="background-image:url('${p.file_path}')">
@@ -253,7 +242,7 @@ function goToSlide(index) {
 }
 
 function initSliderTouch() {
-  const hero = document.querySelector('.hero-slider');
+  const hero = document.getElementById('photo-slider') || document.querySelector('.hero-slider');
   if (!hero) return;
   let touchStartX = 0;
   hero.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
