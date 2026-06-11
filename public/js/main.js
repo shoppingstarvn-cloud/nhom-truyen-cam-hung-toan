@@ -48,7 +48,16 @@ async function loadSettings() {
     setText('site-name', s.site_name);
     setText('site-tagline', s.site_tagline);
     setText('hero-title', s.site_name);
-    setText('hero-tagline', s.site_tagline);
+    // Slogan: split into 2 lines (one idea per line)
+    const heroTag = getEl('hero-tagline');
+    if (heroTag && s.site_tagline) {
+      const parts = String(s.site_tagline).split(/\s*[-–—]\s*/).filter(Boolean);
+      heroTag.innerHTML = parts.map(t =>
+        `<span class="tagline-line">${t.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
+      ).join('');
+    } else {
+      setText('hero-tagline', s.site_tagline);
+    }
     setText('footer-site-name', s.site_name);
     setText('footer-tagline', s.site_tagline);
     setText('footer-text', s.footer_text);
@@ -162,17 +171,9 @@ async function loadSlider() {
     }
     if (hero) hero.style.display = '';
 
+    // Clean photo slides — no text overlay (all text lives in the hero section above)
     trackEl.innerHTML = photos.map((p) => `
-      <div class="slide" style="background-image:url('${p.file_path}')">
-        <div class="slide-content">
-          ${p.title ? `<h1>${p.title}</h1>` : `<h1>${siteName}</h1>`}
-          ${p.description ? `<p>${p.description}</p>` : `<p>${siteTag}</p>`}
-          <div class="hero-btns">
-            <a href="#resources" class="btn-hero-primary">Khám phá kho tài nguyên</a>
-            <a href="#teachers" class="btn-hero-outline">Gặp gỡ Thầy Cô</a>
-          </div>
-        </div>
-      </div>
+      <div class="slide" style="background-image:url('${p.file_path}')"></div>
     `).join('');
 
     // Dots
