@@ -209,6 +209,16 @@ function initDatabase() {
     );
   `);
 
+  // Migration: extra profile columns for users (safe to run repeatedly)
+  const userCols = db.prepare(`PRAGMA table_info(users)`).all().map(c => c.name);
+  const addUserCol = (name, ddl) => { if (!userCols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`); };
+  addUserCol('birth_date', 'birth_date TEXT');
+  addUserCol('zalo_phone', 'zalo_phone TEXT');
+  addUserCol('workplace', 'workplace TEXT');
+  addUserCol('ward', 'ward TEXT');
+  addUserCol('google_id', 'google_id TEXT');
+  addUserCol('profile_completed', 'profile_completed INTEGER DEFAULT 1');
+
   // Insert default superadmin
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('superadmin');
   if (!adminExists) {
