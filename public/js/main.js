@@ -46,18 +46,21 @@ async function loadSettings() {
     const s = await api('/api/settings');
     document.title = s.site_name || 'Nhóm Học Liệu Giáo Viên';
     setText('site-name', s.site_name);
-    setText('site-tagline', s.site_tagline);
     setText('hero-title', s.site_name);
     // Slogan: split into 2 lines (one idea per line)
-    const heroTag = getEl('hero-tagline');
-    if (heroTag && s.site_tagline) {
-      const parts = String(s.site_tagline).split(/\s*[-–—]\s*/).filter(Boolean);
-      heroTag.innerHTML = parts.map(t =>
-        `<span class="tagline-line">${t.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
-      ).join('');
-    } else {
-      setText('hero-tagline', s.site_tagline);
-    }
+    const tagline2Lines = (id) => {
+      const tEl = getEl(id);
+      if (tEl && s.site_tagline) {
+        const parts = String(s.site_tagline).split(/\s*[-–—]\s*/).filter(Boolean);
+        tEl.innerHTML = parts.map(t =>
+          `<span class="tagline-line">${t.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
+        ).join('');
+      } else {
+        setText(id, s.site_tagline);
+      }
+    };
+    tagline2Lines('site-tagline');
+    tagline2Lines('hero-tagline');
     setText('footer-site-name', s.site_name);
     setText('footer-tagline', s.site_tagline);
     setText('footer-text', s.footer_text);
@@ -171,9 +174,12 @@ async function loadSlider() {
     }
     if (hero) hero.style.display = '';
 
-    // Clean photo slides — no text overlay (all text lives in the hero section above)
+    // Clean photo slides — full image visible (object-fit: contain) with blurred fill
     trackEl.innerHTML = photos.map((p) => `
-      <div class="slide" style="background-image:url('${p.file_path}')"></div>
+      <div class="slide">
+        <div class="slide-bg" style="background-image:url('${p.file_path}')"></div>
+        <img class="slide-img" src="${p.file_path}" alt="${(p.title || '').replace(/"/g, '&quot;')}" loading="lazy">
+      </div>
     `).join('');
 
     // Dots
