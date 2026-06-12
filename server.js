@@ -69,30 +69,154 @@ function hasAccess(userRole, requiredLevel) {
 app.use(authMiddleware);
 
 // ==================== AUTH ====================
+
+// ---- CAPTCHA (self-hosted SVG) ----
+const captchaStore = new Map(); // id -> { code, expires }
+const CAPTCHA_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function genCaptchaSvg(code) {
+  const colors = ['#1e3a5f', '#7c3aed', '#dc2626', '#059669', '#d97706'];
+  let chars = '';
+  for (let i = 0; i < code.length; i++) {
+    const x = 16 + i * 27 + (Math.random() * 6 - 3);
+    const y = 30 + (Math.random() * 8 - 4);
+    const rot = (Math.random() * 40 - 20).toFixed(0);
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    chars += `<text x="${x}" y="${y}" transform="rotate(${rot} ${x} ${y})" font-size="26" font-weight="bold" font-family="Verdana, sans-serif" fill="${c}">${code[i]}</text>`;
+  }
+  let noise = '';
+  for (let i = 0; i < 5; i++) {
+    noise += `<line x1="${(Math.random() * 160).toFixed(0)}" y1="${(Math.random() * 44).toFixed(0)}" x2="${(Math.random() * 160).toFixed(0)}" y2="${(Math.random() * 44).toFixed(0)}" stroke="#94a3b8" stroke-width="1" opacity="0.6"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="44" style="background:#f1f5f9;border-radius:8px">${noise}${chars}</svg>`;
+}
+
+app.get('/api/auth/captcha', (req, res) => {
+  // prune expired
+  const now = Date.now();
+  for (const [k, v] of captchaStore) if (v.expires < now) captchaStore.delete(k);
+  let code = '';
+  for (let i = 0; i < 5; i++) code += CAPTCHA_CHARS[Math.floor(Math.random() * CAPTCHA_CHARS.length)];
+  const id = uuidv4();
+  captchaStore.set(id, { code, expires: now + 10 * 60 * 1000 });
+  res.json({ id, svg: genCaptchaSvg(code) });
+});
+
+function verifyCaptcha(id, text) {
+  if (!id || !text) return false;
+  const entry = captchaStore.get(id);
+  captchaStore.delete(id); // one-time use
+  if (!entry || entry.expires < Date.now()) return false;
+  return entry.code.toUpperCase() === String(text).trim().toUpperCase();
+}
+
+function signUserToken(user) {
+  return jwt.sign({ id: user.id, username: user.username, role: user.role, full_name: user.full_name }, JWT_SECRET, { expiresIn: '24h' });
+}
+function publicUser(user) {
+  return {
+    id: user.id, username: user.username, role: user.role, full_name: user.full_name,
+    avatar: user.avatar, email: user.email, birth_date: user.birth_date, zalo_phone: user.zalo_phone,
+    workplace: user.workplace, ward: user.ward, profile_completed: user.profile_completed
+  };
+}
+
 app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, captchaId, captchaText } = req.body;
+  if (!verifyCaptcha(captchaId, captchaText))
+    return res.status(400).json({ error: 'Mã captcha không đúng hoặc đã hết hạn' });
   const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
   if (!user || !bcrypt.compareSync(password, user.password))
     return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không đúng' });
-  const token = jwt.sign({ id: user.id, username: user.username, role: user.role, full_name: user.full_name }, JWT_SECRET, { expiresIn: '24h' });
-  res.json({ token, user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name, avatar: user.avatar } });
+  res.json({ token: signUserToken(user), user: publicUser(user) });
 });
 
 app.get('/api/auth/me', requireAuth(), (req, res) => {
-  const user = db.prepare('SELECT id, username, full_name, email, role, avatar, bio FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, full_name, email, role, avatar, bio, birth_date, zalo_phone, workplace, ward, profile_completed FROM users WHERE id = ?').get(req.user.id);
   res.json(user);
 });
 
+const PROFILE_FIELDS = ['full_name', 'birth_date', 'zalo_phone', 'email', 'user_type', 'workplace', 'ward'];
+function validateProfile(body) {
+  for (const f of PROFILE_FIELDS) {
+    if (!body[f] || !String(body[f]).trim()) return `Vui lòng nhập đầy đủ thông tin bắt buộc`;
+  }
+  if (!['teacher', 'student'].includes(body.user_type)) return 'Vui lòng chọn Giáo viên hoặc Học sinh';
+  if (!/^\S+@\S+\.\S+$/.test(body.email)) return 'Email không hợp lệ';
+  if (!/^0\d{8,10}$/.test(String(body.zalo_phone).replace(/\s/g, ''))) return 'Số điện thoại Zalo không hợp lệ';
+  return null;
+}
+
 app.post('/api/auth/register', (req, res) => {
-  const { username, password, full_name, email } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Thiếu thông tin' });
+  const { username, password } = req.body;
+  if (!username || String(username).trim().length < 4) return res.status(400).json({ error: 'Tên đăng nhập tối thiểu 4 ký tự' });
+  if (!password || String(password).length < 6) return res.status(400).json({ error: 'Mật khẩu tối thiểu 6 ký tự' });
+  const pErr = validateProfile(req.body);
+  if (pErr) return res.status(400).json({ error: pErr });
+  const { full_name, birth_date, zalo_phone, email, user_type, workplace, ward } = req.body;
   try {
     const hash = bcrypt.hashSync(password, 10);
-    const result = db.prepare(`INSERT INTO users (username, password, full_name, email, role) VALUES (?, ?, ?, ?, 'student')`).run(username, hash, full_name, email);
-    res.json({ success: true, id: result.lastInsertRowid });
+    const result = db.prepare(`
+      INSERT INTO users (username, password, full_name, email, role, birth_date, zalo_phone, workplace, ward, profile_completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(String(username).trim(), hash, full_name, email, user_type, birth_date, zalo_phone, workplace, ward);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ success: true, token: signUserToken(user), user: publicUser(user) });
   } catch (e) {
     res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
   }
+});
+
+// ---- GOOGLE SIGN-IN (verify ID token server-side) ----
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: 'Thiếu thông tin xác thực Google' });
+    if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Đăng nhập Google chưa được cấu hình' });
+    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential));
+    if (!r.ok) return res.status(401).json({ error: 'Xác minh Google thất bại' });
+    const p = await r.json();
+    if (p.aud !== GOOGLE_CLIENT_ID) return res.status(401).json({ error: 'Token Google không hợp lệ' });
+    if (p.email_verified !== 'true' && p.email_verified !== true) return res.status(401).json({ error: 'Email Google chưa được xác minh' });
+
+    let user = db.prepare('SELECT * FROM users WHERE google_id = ? OR email = ?').get(p.sub, p.email);
+    if (user && !user.is_active) return res.status(403).json({ error: 'Tài khoản đã bị khóa' });
+    if (!user) {
+      // create new account, pending profile completion
+      let base = (p.email.split('@')[0] || 'user').replace(/[^a-zA-Z0-9_.]/g, '').slice(0, 20) || 'user';
+      let username = base, n = 0;
+      while (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) username = base + (++n);
+      const randomPw = bcrypt.hashSync(uuidv4(), 10);
+      const result = db.prepare(`
+        INSERT INTO users (username, password, full_name, email, role, avatar, google_id, profile_completed)
+        VALUES (?, ?, ?, ?, 'student', ?, ?, 0)
+      `).run(username, randomPw, p.name || '', p.email, p.picture || null, p.sub);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    } else if (!user.google_id) {
+      db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(p.sub, user.id);
+    }
+    res.json({ token: signUserToken(user), user: publicUser(user) });
+  } catch (e) {
+    res.status(500).json({ error: 'Lỗi xác thực Google' });
+  }
+});
+
+// ---- COMPLETE / UPDATE PROFILE ----
+app.post('/api/auth/complete-profile', requireAuth(), (req, res) => {
+  const pErr = validateProfile(req.body);
+  if (pErr) return res.status(400).json({ error: pErr });
+  const { full_name, birth_date, zalo_phone, email, user_type, workplace, ward } = req.body;
+  const me = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!me) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
+  // only switch role between student/teacher for normal users (never touch admin roles)
+  const newRole = ['student', 'teacher'].includes(me.role) ? user_type : me.role;
+  db.prepare(`
+    UPDATE users SET full_name=?, birth_date=?, zalo_phone=?, email=?, role=?, workplace=?, ward=?, profile_completed=1 WHERE id=?
+  `).run(full_name, birth_date, zalo_phone, email, newRole, workplace, ward, req.user.id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  res.json({ success: true, token: signUserToken(user), user: publicUser(user) });
 });
 
 // ==================== SITE SETTINGS ====================
@@ -100,6 +224,7 @@ app.get('/api/settings', (req, res) => {
   const settings = db.prepare('SELECT key, value FROM site_settings').all();
   const obj = {};
   settings.forEach(s => obj[s.key] = s.value);
+  obj.google_client_id = GOOGLE_CLIENT_ID; // public OAuth client id for Google Sign-In button
   res.json(obj);
 });
 
