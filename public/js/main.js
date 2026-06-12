@@ -74,6 +74,8 @@ async function loadSettings() {
     // Neon cycle duration
     const neonSec = parseFloat(s.neon_cycle) || 3;
     document.documentElement.style.setProperty('--neon-cycle', neonSec + 's');
+    // Google Sign-In client id
+    googleClientId = s.google_client_id || '';
     // Social
     const socials = [];
     if (s.facebook_url) socials.push(`<a href="${s.facebook_url}" target="_blank" title="Facebook"><i class="fab fa-facebook-f"></i></a>`);
@@ -85,11 +87,16 @@ async function loadSettings() {
 }
 
 // ===== AUTH =====
+let googleClientId = '';
+let googleInited = false;
+const captchaIds = {};
+
 async function checkAuth() {
   if (!token) { showGuestUI(); return; }
   try {
     currentUser = await api('/api/auth/me');
     showUserUI(currentUser);
+    if (currentUser.profile_completed === 0) openProfileModal(currentUser);
   } catch { token = null; localStorage.removeItem('edu_token'); showGuestUI(); }
 }
 
@@ -107,11 +114,80 @@ function showUserUI(user) {
   if (getEl('admin-link')) getEl('admin-link').style.display = isAdmin ? 'flex' : 'none';
 }
 
-function openLoginModal() { getEl('login-modal').classList.add('active'); }
+// ---- Captcha ----
+async function loadCaptcha(which) {
+  try {
+    const d = await api('/api/auth/captcha');
+    captchaIds[which] = d.id;
+    const img = getEl(which + '-captcha-img');
+    if (img) img.innerHTML = d.svg;
+    const inp = getEl(which + '-captcha');
+    if (inp) inp.value = '';
+  } catch (e) {}
+}
+
+// ---- Google Sign-In ----
+function initGoogleAuth() {
+  if (googleInited || !googleClientId || !window.google?.accounts?.id) return;
+  google.accounts.id.initialize({ client_id: googleClientId, callback: onGoogleCredential });
+  googleInited = true;
+}
+
+function renderGoogleButtons() {
+  initGoogleAuth();
+  ['google-btn-login', 'google-btn-register'].forEach(id => {
+    const el = getEl(id);
+    if (!el) return;
+    if (!googleClientId) {
+      el.innerHTML = '<p class="auth-hint">⚙️ Đăng nhập Google đang được cấu hình…</p>';
+      return;
+    }
+    if (googleInited && !el.dataset.rendered) {
+      google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', width: 300, text: id.includes('register') ? 'signup_with' : 'signin_with', locale: 'vi' });
+      el.dataset.rendered = '1';
+    }
+  });
+}
+
+async function onGoogleCredential(response) {
+  try {
+    const data = await api('/api/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential: response.credential })
+    });
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('edu_token', token);
+    closeLoginModal();
+    showUserUI(currentUser);
+    if (data.user.profile_completed === 0) {
+      openProfileModal(data.user);
+    } else {
+      await Promise.all([loadResourceCategories(), loadNavButtons(), loadChatboxLinks(), loadNews()]);
+    }
+  } catch (err) {
+    alert('Đăng nhập Google thất bại: ' + err.message);
+  }
+}
+
+// ---- Auth modal ----
+function openLoginModal() {
+  getEl('login-modal').classList.add('active');
+  loadCaptcha('login');
+  renderGoogleButtons();
+}
 function closeLoginModal(e) {
   if (!e || e.target === getEl('login-modal') || e.type === 'click') {
     getEl('login-modal').classList.remove('active');
   }
+}
+
+function switchAuthTab(tab) {
+  getEl('tab-login').classList.toggle('active', tab === 'login');
+  getEl('tab-register').classList.toggle('active', tab === 'register');
+  getEl('pane-login').style.display = tab === 'login' ? 'block' : 'none';
+  getEl('pane-register').style.display = tab === 'register' ? 'block' : 'none';
+  renderGoogleButtons();
 }
 
 async function handleLogin(e) {
@@ -123,20 +199,171 @@ async function handleLogin(e) {
   try {
     const data = await api('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: getEl('login-username').value, password: getEl('login-password').value })
+      body: JSON.stringify({
+        username: getEl('login-username').value,
+        password: getEl('login-password').value,
+        captchaId: captchaIds.login,
+        captchaText: getEl('login-captcha').value
+      })
     });
     token = data.token;
     currentUser = data.user;
     localStorage.setItem('edu_token', token);
     showUserUI(currentUser);
     closeLoginModal();
+    if (data.user.profile_completed === 0) openProfileModal(data.user);
     // Reload protected content
     await Promise.all([loadResourceCategories(), loadNavButtons(), loadChatboxLinks(), loadNews()]);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.style.display = 'block';
+    loadCaptcha('login');
   } finally {
     btn.disabled = false; btn.textContent = 'Đăng nhập';
+  }
+}
+
+// ---- Register ----
+function regTypeValue(name) {
+  const checked = document.querySelector(`input[name="${name}"]:checked`);
+  return checked ? checked.value : '';
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const btn = getEl('register-btn');
+  btn.disabled = true; btn.textContent = 'Đang đăng ký...';
+  const errEl = getEl('register-error');
+  errEl.style.display = 'none';
+  try {
+    const data = await api('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: getEl('reg-username').value.trim(),
+        password: getEl('reg-password').value,
+        full_name: getEl('reg-fullname').value.trim(),
+        birth_date: getEl('reg-birthdate').value,
+        zalo_phone: getEl('reg-zalo').value.trim(),
+        email: getEl('reg-email').value.trim(),
+        user_type: regTypeValue('reg-type'),
+        workplace: getEl('reg-workplace').value.trim(),
+        ward: getEl('reg-ward').value.trim()
+      })
+    });
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('edu_token', token);
+    showUserUI(currentUser);
+    closeLoginModal();
+    alert('🎉 Đăng ký thành công! Chào mừng ' + (data.user.full_name || data.user.username));
+    await Promise.all([loadResourceCategories(), loadNavButtons(), loadChatboxLinks(), loadNews()]);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Đăng ký tài khoản';
+  }
+}
+
+// ---- Complete profile (after quick Google signup) ----
+function openProfileModal(user) {
+  getEl('pf-fullname').value = user.full_name || '';
+  getEl('pf-birthdate').value = user.birth_date || '';
+  getEl('pf-zalo').value = user.zalo_phone || '';
+  getEl('pf-email').value = user.email || '';
+  getEl('pf-workplace').value = user.workplace || '';
+  getEl('pf-ward').value = user.ward || '';
+  getEl('profile-modal').classList.add('active');
+}
+
+async function handleCompleteProfile(e) {
+  e.preventDefault();
+  const btn = getEl('profile-btn');
+  btn.disabled = true; btn.textContent = 'Đang lưu...';
+  const errEl = getEl('profile-error');
+  errEl.style.display = 'none';
+  try {
+    const data = await api('/api/auth/complete-profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: getEl('pf-fullname').value.trim(),
+        birth_date: getEl('pf-birthdate').value,
+        zalo_phone: getEl('pf-zalo').value.trim(),
+        email: getEl('pf-email').value.trim(),
+        user_type: regTypeValue('pf-type'),
+        workplace: getEl('pf-workplace').value.trim(),
+        ward: getEl('pf-ward').value.trim()
+      })
+    });
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('edu_token', token);
+    getEl('profile-modal').classList.remove('active');
+    showUserUI(currentUser);
+    openAccountModal();
+    await Promise.all([loadResourceCategories(), loadNavButtons(), loadChatboxLinks(), loadNews()]);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Lưu và tiếp tục';
+  }
+}
+
+// ---- Account dashboard ----
+function openAccountModal() {
+  if (!currentUser) { openLoginModal(); return; }
+  const u = currentUser;
+  getEl('ac-fullname').value = u.full_name || '';
+  getEl('ac-birthdate').value = u.birth_date || '';
+  getEl('ac-zalo').value = u.zalo_phone || '';
+  getEl('ac-email').value = u.email || '';
+  getEl('ac-workplace').value = u.workplace || '';
+  getEl('ac-ward').value = u.ward || '';
+  const type = u.role === 'teacher' ? 'teacher' : 'student';
+  const radio = document.querySelector(`input[name="ac-type"][value="${type}"]`);
+  if (radio) radio.checked = true;
+  const roleLabels = { superadmin: '⚡ Quản trị tối cao', admin1: '🔑 Admin 1', admin2: '🔑 Admin 2', teacher: '👨‍🏫 Giáo viên', student: '🎓 Học sinh' };
+  setText('account-role-label', `${u.username} · ${roleLabels[u.role] || u.role}`);
+  getEl('account-success').style.display = 'none';
+  getEl('account-modal').classList.add('active');
+}
+function closeAccountModal(e) {
+  if (!e || e.target === getEl('account-modal') || e.type === 'click') {
+    getEl('account-modal').classList.remove('active');
+  }
+}
+
+async function handleAccountSave(e) {
+  e.preventDefault();
+  const btn = getEl('account-btn');
+  btn.disabled = true; btn.textContent = 'Đang lưu...';
+  const errEl = getEl('account-error');
+  errEl.style.display = 'none';
+  getEl('account-success').style.display = 'none';
+  try {
+    const data = await api('/api/auth/complete-profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: getEl('ac-fullname').value.trim(),
+        birth_date: getEl('ac-birthdate').value,
+        zalo_phone: getEl('ac-zalo').value.trim(),
+        email: getEl('ac-email').value.trim(),
+        user_type: regTypeValue('ac-type'),
+        workplace: getEl('ac-workplace').value.trim(),
+        ward: getEl('ac-ward').value.trim()
+      })
+    });
+    token = data.token;
+    currentUser = data.user;
+    localStorage.setItem('edu_token', token);
+    showUserUI(currentUser);
+    getEl('account-success').style.display = 'block';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Lưu thay đổi';
   }
 }
 
