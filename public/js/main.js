@@ -596,6 +596,36 @@ function initScrollEffects() {
     const btn = getEl('back-to-top');
     if (btn) btn.classList.toggle('visible', window.scrollY > 400);
   });
+  initAutoHideHeader();
+}
+
+// ===== AUTO-HIDE HEADER ON MOBILE (hide on scroll down, show on scroll up) =====
+function initAutoHideHeader() {
+  const header = getEl('header');
+  if (!header) return;
+  let lastY = window.scrollY;
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY;
+      const isMobile = window.innerWidth <= 768;
+      if (!isMobile) {
+        header.classList.remove('header-hidden');
+      } else if (y > lastY + 4 && y > 120) {
+        // scrolling down → hide header for easier reading
+        header.classList.add('header-hidden');
+        const nav = getEl('nav-list');
+        if (nav) nav.classList.remove('open');
+      } else if (y < lastY - 4 || y <= 120) {
+        // scrolling up (or near top) → show header again
+        header.classList.remove('header-hidden');
+      }
+      lastY = y;
+      ticking = false;
+    });
+  }, { passive: true });
 }
 
 // ===== NAV TOGGLE =====
