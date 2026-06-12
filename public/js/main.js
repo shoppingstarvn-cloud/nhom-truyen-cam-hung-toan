@@ -243,10 +243,20 @@ function changeSlide(dir) {
 function goToSlide(index) {
   currentSlide = index;
   const track = getEl('slider-track') || getEl('slider-container');
-  if (track) track.style.transform = `translateX(-${index * 100}%)`;
+  if (track) {
+    // Pixel-perfect alignment: always center each slide exactly
+    const hero = document.getElementById('photo-slider') || document.querySelector('.hero-slider');
+    if (hero) hero.scrollLeft = 0; // neutralize any stray native scroll
+    const w = (hero && hero.clientWidth) || track.clientWidth;
+    track.style.transform = `translateX(-${index * w}px)`;
+  }
   document.querySelectorAll('.slider-dot').forEach((d, i) => d.classList.toggle('active', i === index));
   if (sliderSettings?.auto_play !== 0) startProgressBar(sliderSettings?.interval_ms || 4000);
 }
+
+// Re-align current slide on resize / orientation change
+window.addEventListener('resize', () => { if (sliderPhotos.length) goToSlide(currentSlide); });
+window.addEventListener('orientationchange', () => { if (sliderPhotos.length) setTimeout(() => goToSlide(currentSlide), 300); });
 
 function initSliderTouch() {
   const hero = document.getElementById('photo-slider') || document.querySelector('.hero-slider');
@@ -257,6 +267,8 @@ function initSliderTouch() {
     const diff = touchStartX - e.changedTouches[0].clientX;
     if (Math.abs(diff) > 50) changeSlide(diff > 0 ? 1 : -1);
   }, { passive: true });
+  // Keep slides perfectly centered: cancel any accidental native horizontal scroll
+  hero.addEventListener('scroll', () => { if (hero.scrollLeft !== 0) hero.scrollLeft = 0; }, { passive: true });
 }
 
 // ===== STATS =====
