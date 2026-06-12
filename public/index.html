@@ -12,6 +12,7 @@
 <meta property="og:site_name" content="Nhóm truyền cảm hứng Toán">
 <link rel="stylesheet" href="/css/style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -34,6 +35,7 @@
               <img id="user-avatar" src="/images/default-avatar.png" class="user-avatar-sm" alt="">
               <span id="user-name"></span>
               <div class="user-dropdown">
+                <a href="#" onclick="openAccountModal()"><i class="fas fa-id-card"></i> Tài khoản của tôi</a>
                 <a href="#" id="admin-link" style="display:none" onclick="window.open('/admin','_blank')"><i class="fas fa-cog"></i> Quản trị</a>
                 <a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
               </div>
@@ -241,24 +243,122 @@
 <!-- BACK TO TOP -->
 <button class="back-to-top" id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fas fa-chevron-up"></i></button>
 
-<!-- LOGIN MODAL -->
+<!-- AUTH MODAL: Đăng nhập / Đăng ký -->
 <div class="modal-overlay" id="login-modal" onclick="closeLoginModal(event)">
-  <div class="modal-box">
+  <div class="modal-box auth-box">
     <button class="modal-close" onclick="closeLoginModal()"><i class="fas fa-times"></i></button>
     <div class="modal-logo">🎓</div>
-    <h2>Đăng nhập</h2>
-    <p>Truy cập tài nguyên dành cho thành viên</p>
-    <form onsubmit="handleLogin(event)">
-      <div class="form-group">
-        <label><i class="fas fa-user"></i> Tên đăng nhập</label>
-        <input type="text" id="login-username" placeholder="Nhập tên đăng nhập" required>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Đăng nhập</button>
+      <button type="button" class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Đăng ký</button>
+    </div>
+
+    <!-- PANE: LOGIN -->
+    <div id="pane-login">
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label><i class="fas fa-user"></i> Tên đăng nhập</label>
+          <input type="text" id="login-username" placeholder="Nhập tên đăng nhập" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Mật khẩu</label>
+          <input type="password" id="login-password" placeholder="Nhập mật khẩu" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-shield-alt"></i> Mã xác nhận</label>
+          <div class="captcha-row">
+            <span id="login-captcha-img" class="captcha-img"></span>
+            <button type="button" class="captcha-refresh" onclick="loadCaptcha('login')" title="Đổi mã khác"><i class="fas fa-sync-alt"></i></button>
+            <input type="text" id="login-captcha" placeholder="Nhập mã" required autocomplete="off" maxlength="5">
+          </div>
+        </div>
+        <div id="login-error" class="form-error" style="display:none"></div>
+        <button type="submit" class="btn-submit" id="login-btn">Đăng nhập</button>
+      </form>
+      <div class="auth-divider"><span>hoặc</span></div>
+      <div class="google-btn-wrap" id="google-btn-login"></div>
+    </div>
+
+    <!-- PANE: REGISTER -->
+    <div id="pane-register" style="display:none">
+      <form onsubmit="handleRegister(event)">
+        <div class="form-grid">
+          <div class="form-group"><label>Tên đăng nhập *</label><input type="text" id="reg-username" required minlength="4" placeholder="Ít nhất 4 ký tự"></div>
+          <div class="form-group"><label>Mật khẩu *</label><input type="password" id="reg-password" required minlength="6" placeholder="Ít nhất 6 ký tự"></div>
+          <div class="form-group"><label>Họ và tên *</label><input type="text" id="reg-fullname" required placeholder="Nguyễn Văn A"></div>
+          <div class="form-group"><label>Ngày sinh *</label><input type="date" id="reg-birthdate" required></div>
+          <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="reg-zalo" required placeholder="09xxxxxxxx"></div>
+          <div class="form-group"><label>Email *</label><input type="email" id="reg-email" required placeholder="email@gmail.com"></div>
+          <div class="form-group full-row"><label>Bạn là *</label>
+            <div class="radio-row">
+              <label class="radio-opt"><input type="radio" name="reg-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
+              <label class="radio-opt"><input type="radio" name="reg-type" value="student"> 🎓 Học sinh</label>
+            </div>
+          </div>
+          <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="reg-workplace" required placeholder="VD: Trường THCS Lê Lợi"></div>
+          <div class="form-group"><label>Phường / Xã *</label><input type="text" id="reg-ward" required placeholder="VD: Phường Hồng Bàng"></div>
+        </div>
+        <div id="register-error" class="form-error" style="display:none"></div>
+        <button type="submit" class="btn-submit" id="register-btn">Đăng ký tài khoản</button>
+      </form>
+      <div class="auth-divider"><span>hoặc đăng ký nhanh</span></div>
+      <div class="google-btn-wrap" id="google-btn-register"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETE PROFILE MODAL (sau khi đăng ký nhanh Google) -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal-box auth-box">
+    <div class="modal-logo">📝</div>
+    <h2>Hoàn thiện hồ sơ</h2>
+    <p>Vui lòng bổ sung thông tin bắt buộc để vào trang quản trị tài khoản</p>
+    <form onsubmit="handleCompleteProfile(event)">
+      <div class="form-grid">
+        <div class="form-group"><label>Họ và tên *</label><input type="text" id="pf-fullname" required></div>
+        <div class="form-group"><label>Ngày sinh *</label><input type="date" id="pf-birthdate" required></div>
+        <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="pf-zalo" required placeholder="09xxxxxxxx"></div>
+        <div class="form-group"><label>Email (từ Google)</label><input type="email" id="pf-email" required readonly></div>
+        <div class="form-group full-row"><label>Bạn là *</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="pf-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
+            <label class="radio-opt"><input type="radio" name="pf-type" value="student"> 🎓 Học sinh</label>
+          </div>
+        </div>
+        <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="pf-workplace" required></div>
+        <div class="form-group"><label>Phường / Xã *</label><input type="text" id="pf-ward" required></div>
       </div>
-      <div class="form-group">
-        <label><i class="fas fa-lock"></i> Mật khẩu</label>
-        <input type="password" id="login-password" placeholder="Nhập mật khẩu" required>
+      <div id="profile-error" class="form-error" style="display:none"></div>
+      <button type="submit" class="btn-submit" id="profile-btn">Lưu và tiếp tục</button>
+    </form>
+  </div>
+</div>
+
+<!-- ACCOUNT DASHBOARD MODAL -->
+<div class="modal-overlay" id="account-modal" onclick="closeAccountModal(event)">
+  <div class="modal-box auth-box">
+    <button class="modal-close" onclick="closeAccountModal()"><i class="fas fa-times"></i></button>
+    <div class="modal-logo">👤</div>
+    <h2>Tài khoản của tôi</h2>
+    <p id="account-role-label"></p>
+    <form onsubmit="handleAccountSave(event)">
+      <div class="form-grid">
+        <div class="form-group"><label>Họ và tên *</label><input type="text" id="ac-fullname" required></div>
+        <div class="form-group"><label>Ngày sinh *</label><input type="date" id="ac-birthdate" required></div>
+        <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="ac-zalo" required></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="ac-email" required></div>
+        <div class="form-group full-row"><label>Bạn là *</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="ac-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
+            <label class="radio-opt"><input type="radio" name="ac-type" value="student"> 🎓 Học sinh</label>
+          </div>
+        </div>
+        <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="ac-workplace" required></div>
+        <div class="form-group"><label>Phường / Xã *</label><input type="text" id="ac-ward" required></div>
       </div>
-      <div id="login-error" class="form-error" style="display:none"></div>
-      <button type="submit" class="btn-submit" id="login-btn">Đăng nhập</button>
+      <div id="account-error" class="form-error" style="display:none"></div>
+      <div id="account-success" class="form-success" style="display:none">✅ Đã lưu thay đổi thành công</div>
+      <button type="submit" class="btn-submit" id="account-btn">Lưu thay đổi</button>
     </form>
   </div>
 </div>

@@ -23,6 +23,14 @@
         <label><i class="fas fa-lock"></i> Mật khẩu</label>
         <input type="password" id="a-password" placeholder="Nhập mật khẩu" required>
       </div>
+      <div class="a-form-group">
+        <label><i class="fas fa-shield-alt"></i> Mã xác nhận</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="a-captcha-img" style="display:inline-flex;border-radius:8px;overflow:hidden;flex-shrink:0"></span>
+          <button type="button" onclick="loadAdminCaptcha()" title="Đổi mã khác" style="border:1px solid #e2e8f0;background:#f8fafc;width:38px;height:38px;border-radius:8px;cursor:pointer"><i class="fas fa-sync-alt"></i></button>
+          <input type="text" id="a-captcha" placeholder="Nhập mã" required autocomplete="off" maxlength="5" style="flex:1;min-width:80px">
+        </div>
+      </div>
       <div id="a-login-error" class="a-error" style="display:none"></div>
       <button type="submit" class="a-btn-primary" id="a-login-btn" style="width:100%">Đăng nhập</button>
     </form>
