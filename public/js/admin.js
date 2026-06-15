@@ -39,6 +39,7 @@ async function tryAutoLogin() {
 function showLoginScreen() {
   document.getElementById('admin-login').style.display = 'flex';
   document.getElementById('admin-panel').style.display = 'none';
+  loadAdminCaptcha();
 }
 
 function showAdminPanel() {
@@ -55,6 +56,19 @@ function showAdminPanel() {
   showPage('dashboard');
 }
 
+let aCaptchaId = null;
+async function loadAdminCaptcha() {
+  try {
+    const r = await fetch('/api/auth/captcha');
+    const d = await r.json();
+    aCaptchaId = d.id;
+    const img = document.getElementById('a-captcha-img');
+    if (img) img.innerHTML = d.svg;
+    const inp = document.getElementById('a-captcha');
+    if (inp) inp.value = '';
+  } catch (e) {}
+}
+
 async function adminLogin(e) {
   e.preventDefault();
   const btn = document.getElementById('a-login-btn');
@@ -64,7 +78,12 @@ async function adminLogin(e) {
   try {
     const data = await aApi('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: document.getElementById('a-username').value, password: document.getElementById('a-password').value })
+      body: JSON.stringify({
+        username: document.getElementById('a-username').value,
+        password: document.getElementById('a-password').value,
+        captchaId: aCaptchaId,
+        captchaText: document.getElementById('a-captcha') ? document.getElementById('a-captcha').value : ''
+      })
     });
     if (!['superadmin','admin1','admin2'].includes(data.user.role)) throw new Error('Tài khoản không có quyền quản trị');
     aToken = data.token; aUser = data.user;
@@ -72,6 +91,7 @@ async function adminLogin(e) {
     showAdminPanel();
   } catch (err) {
     errEl.textContent = err.message; errEl.style.display = 'block';
+    loadAdminCaptcha();
   } finally { btn.disabled = false; btn.textContent = 'Đăng nhập'; }
 }
 

@@ -1,36 +1,35 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const { query } = require('./db');
 
-// Persistent data dir (Railway Volume): set DATA_DIR=/data
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-fs.mkdirSync(DATA_DIR, { recursive: true });
-const db = new Database(path.join(DATA_DIR, 'edu_database.db'));
-
-function initDatabase() {
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-
+// Postgres schema for Supabase. Mirrors database/schema.js (SQLite) table-for-table.
+// During the migration, this coexists with the legacy SQLite schema (database/schema.js):
+// endpoints are converted group by group to use this Postgres database instead.
+async function initPostgresDatabase() {
+  await query(`
     -- Users & Roles
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       full_name TEXT,
       email TEXT,
-      role TEXT DEFAULT 'student', -- superadmin, admin1, admin2, teacher, student, public
+      role TEXT DEFAULT 'student',
       avatar TEXT,
       bio TEXT,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      birth_date TEXT,
+      zalo_phone TEXT,
+      workplace TEXT,
+      ward TEXT,
+      google_id TEXT,
+      profile_completed INTEGER DEFAULT 1
     );
 
     -- Teacher Profiles (public)
     CREATE TABLE IF NOT EXISTS teacher_profiles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
       display_name TEXT NOT NULL,
       title TEXT,
       subject TEXT,
@@ -43,45 +42,43 @@ function initDatabase() {
       achievements TEXT,
       is_public INTEGER DEFAULT 1,
       display_order INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Navigation Buttons
     CREATE TABLE IF NOT EXISTS nav_buttons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       label TEXT NOT NULL,
       icon TEXT,
       url TEXT,
       description TEXT,
       category TEXT,
-      access_level TEXT DEFAULT 'public', -- public, student, teacher, admin1, admin2, superadmin
+      access_level TEXT DEFAULT 'public',
       is_active INTEGER DEFAULT 1,
       display_order INTEGER DEFAULT 0,
       color TEXT DEFAULT '#2563eb',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Resource Categories / Repositories
     CREATE TABLE IF NOT EXISTS resource_categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       slug TEXT UNIQUE,
       description TEXT,
       icon TEXT,
       color TEXT DEFAULT '#2563eb',
-      access_level TEXT DEFAULT 'public', -- public, student, teacher, admin1, superadmin
-      parent_id INTEGER,
+      access_level TEXT DEFAULT 'public',
+      parent_id INTEGER REFERENCES resource_categories(id),
       display_order INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (parent_id) REFERENCES resource_categories(id)
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Resources (documents, files, links)
     CREATE TABLE IF NOT EXISTS resources (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      category_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      category_id INTEGER REFERENCES resource_categories(id),
       title TEXT NOT NULL,
       description TEXT,
       file_path TEXT,
@@ -93,16 +90,14 @@ function initDatabase() {
       tags TEXT,
       view_count INTEGER DEFAULT 0,
       download_count INTEGER DEFAULT 0,
-      uploaded_by INTEGER,
+      uploaded_by INTEGER REFERENCES users(id),
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES resource_categories(id),
-      FOREIGN KEY (uploaded_by) REFERENCES users(id)
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Photo Gallery
     CREATE TABLE IF NOT EXISTS photos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT,
       description TEXT,
       file_path TEXT NOT NULL,
@@ -114,12 +109,12 @@ function initDatabase() {
       is_active INTEGER DEFAULT 1,
       is_slider INTEGER DEFAULT 0,
       uploaded_by INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Photo Albums
     CREATE TABLE IF NOT EXISTS albums (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
       cover_photo TEXT,
@@ -127,12 +122,12 @@ function initDatabase() {
       access_level TEXT DEFAULT 'public',
       is_active INTEGER DEFAULT 1,
       display_order INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Videos
     CREATE TABLE IF NOT EXISTS videos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
       youtube_url TEXT,
@@ -145,12 +140,12 @@ function initDatabase() {
       view_count INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
       uploaded_by INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- News / Announcements
     CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       slug TEXT UNIQUE,
       content TEXT,
@@ -160,16 +155,15 @@ function initDatabase() {
       access_level TEXT DEFAULT 'public',
       is_pinned INTEGER DEFAULT 0,
       view_count INTEGER DEFAULT 0,
-      author_id INTEGER,
+      author_id INTEGER REFERENCES users(id),
       is_active INTEGER DEFAULT 1,
-      published_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (author_id) REFERENCES users(id)
+      published_at TIMESTAMPTZ DEFAULT NOW(),
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Slider Settings
     CREATE TABLE IF NOT EXISTS slider_settings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       auto_play INTEGER DEFAULT 1,
       interval_ms INTEGER DEFAULT 4000,
       show_arrows INTEGER DEFAULT 1,
@@ -187,17 +181,17 @@ function initDatabase() {
 
     -- Access Logs
     CREATE TABLE IF NOT EXISTS access_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER,
       action TEXT,
       resource TEXT,
       ip_address TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     -- Chatbox Links
     CREATE TABLE IF NOT EXISTS chatbox_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       url TEXT NOT NULL,
       description TEXT,
@@ -205,27 +199,17 @@ function initDatabase() {
       access_level TEXT DEFAULT 'student',
       is_active INTEGER DEFAULT 1,
       display_order INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );
-
   `);
 
-  // Migration: extra profile columns for users (safe to run repeatedly)
-  const userCols = db.prepare(`PRAGMA table_info(users)`).all().map(c => c.name);
-  const addUserCol = (name, ddl) => { if (!userCols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${ddl}`); };
-  addUserCol('birth_date', 'birth_date TEXT');
-  addUserCol('zalo_phone', 'zalo_phone TEXT');
-  addUserCol('workplace', 'workplace TEXT');
-  addUserCol('ward', 'ward TEXT');
-  addUserCol('google_id', 'google_id TEXT');
-  addUserCol('profile_completed', 'profile_completed INTEGER DEFAULT 1');
-
   // Insert default superadmin
-  const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('superadmin');
-  if (!adminExists) {
+  const adminExists = await query('SELECT id FROM users WHERE role = $1', ['superadmin']);
+  if (adminExists.rows.length === 0) {
     const hash = bcrypt.hashSync('Admin@2024!', 10);
-    db.prepare(`INSERT INTO users (username, password, full_name, email, role) VALUES (?, ?, ?, ?, ?)`).run(
-      'superadmin', hash, 'Quản Trị Viên Hệ Thống', 'admin@edu.vn', 'superadmin'
+    await query(
+      `INSERT INTO users (username, password, full_name, email, role) VALUES ($1, $2, $3, $4, $5)`,
+      ['superadmin', hash, 'Quản Trị Viên Hệ Thống', 'admin@edu.vn', 'superadmin']
     );
   }
 
@@ -244,8 +228,9 @@ function initDatabase() {
     ['footer_text', '© 2024 Nhóm Học Liệu Giáo Viên. All rights reserved.', 'Footer text'],
     ['neon_cycle', '3', 'Chu kỳ neon (giây)'],
   ];
-  const insertSetting = db.prepare(`INSERT OR IGNORE INTO site_settings (key, value, description) VALUES (?, ?, ?)`);
-  settings.forEach(s => insertSetting.run(...s));
+  for (const s of settings) {
+    await query(`INSERT INTO site_settings (key, value, description) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING`, s);
+  }
 
   // Default resource categories
   const cats = [
@@ -259,16 +244,20 @@ function initDatabase() {
     ['Phần mềm & Ứng dụng', 'phan-mem-ung-dung', '💻', '#065f46', 'public'],
     ['Tài liệu nội bộ', 'tai-lieu-noi-bo', '🔒', '#991b1b', 'admin1'],
   ];
-  const insertCat = db.prepare(`INSERT OR IGNORE INTO resource_categories (name, slug, icon, color, access_level) VALUES (?, ?, ?, ?, ?)`);
-  cats.forEach(c => insertCat.run(...c));
-
-  // Default slider settings
-  const sliderExists = db.prepare('SELECT id FROM slider_settings').get();
-  if (!sliderExists) {
-    db.prepare(`INSERT INTO slider_settings (auto_play, interval_ms, show_arrows, show_dots) VALUES (1, 4000, 1, 1)`).run();
+  for (const c of cats) {
+    await query(
+      `INSERT INTO resource_categories (name, slug, icon, color, access_level) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (slug) DO NOTHING`,
+      c
+    );
   }
 
-  console.log('✅ Database initialized successfully');
+  // Default slider settings
+  const sliderExists = await query('SELECT id FROM slider_settings');
+  if (sliderExists.rows.length === 0) {
+    await query(`INSERT INTO slider_settings (auto_play, interval_ms, show_arrows, show_dots) VALUES (1, 4000, 1, 1)`);
+  }
+
+  console.log('✅ Postgres (Supabase) database initialized successfully');
 }
 
-module.exports = { db, initDatabase };
+module.exports = { initPostgresDatabase };
