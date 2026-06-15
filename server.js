@@ -5,11 +5,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const { randomUUID: uuidv4 } = require('crypto');
-const fs = require('fs');
-const { db, initDatabase } = require('./database/schema');
-const { query } = require('./database/db');
+const { query, pgAll, pgGet, pgRun } = require('./database/db');
 const { initPostgresDatabase } = require('./database/pgSchema');
-const { normalizeText, rebuildSearchIndex, syncSearchEntry, trackSearchEvent, recalculateBoosts, getBoostMap } = require('./database/search');
+const {
+  normalizeText, initSearchIndex, rebuildSearchIndex, syncSearchEntry,
+  searchRows, trackSearchEvent, recalculateBoosts, getBoostMap,
+} = require('./database/search');
+const { uploadBuffer, isConfigured: storageConfigured } = require('./database/storage');
 const cron = require('node-cron');
 const { analyzeQuery, explainResults } = require('./services/aiSearch');
 
@@ -17,39 +19,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'edu_secret_key_2024_nexus';
 
-// Persistent data dir (Railway Volume): set DATA_DIR=/data
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-// Init DB
-initDatabase();
-
-// Build the full-text search index from current data
-const searchIndexStart = Date.now();
-rebuildSearchIndex();
-console.log(`🔎 Search index built in ${Date.now() - searchIndexStart}ms`);
-
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const type = req.query.type || 'general';
-    const dir = path.join(UPLOADS_DIR, type);
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, uuidv4() + ext);
-  }
-});
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
+// Uploads go to Supabase Storage (Koyeb has no persistent disk). Files are kept
+// in memory just long enough to forward them to the storage bucket.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+
+// Upload a single multer (memory) file to Supabase Storage and return its public URL.
+async function storeUpload(folder, file) {
+  if (!file) return null;
+  return uploadBuffer(folder, file.originalname, file.buffer, file.mimetype);
+}
 
 // Auth Middleware
 function authMiddleware(req, res, next) {
@@ -75,6 +58,9 @@ function hasAccess(userRole, requiredLevel) {
   const reqLvl = ROLE_LEVEL[requiredLevel] ?? 0;
   return userLvl >= reqLvl;
 }
+
+// Wrap async route handlers so rejected promises become 500s instead of hanging.
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 app.use(authMiddleware);
 
@@ -237,412 +223,429 @@ app.post('/api/auth/complete-profile', requireAuth(), async (req, res) => {
 });
 
 // ==================== SITE SETTINGS ====================
-app.get('/api/settings', (req, res) => {
-  const settings = db.prepare('SELECT key, value FROM site_settings').all();
+app.get('/api/settings', wrap(async (req, res) => {
+  const settings = await pgAll('SELECT key, value FROM site_settings');
   const obj = {};
   settings.forEach(s => obj[s.key] = s.value);
   obj.google_client_id = GOOGLE_CLIENT_ID; // public OAuth client id for Google Sign-In button
   res.json(obj);
-});
+}));
 
-app.put('/api/settings', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  const stmt = db.prepare(`INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)`);
-  Object.entries(req.body).forEach(([k, v]) => stmt.run(k, v));
+app.put('/api/settings', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  for (const [k, v] of Object.entries(req.body)) {
+    await pgRun(`INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, [k, v]);
+  }
   res.json({ success: true });
-});
+}));
 
 // ==================== SLIDER ====================
-app.get('/api/slider/photos', (req, res) => {
-  const settings = db.prepare('SELECT * FROM slider_settings LIMIT 1').get();
+app.get('/api/slider/photos', wrap(async (req, res) => {
+  const settings = await pgGet('SELECT * FROM slider_settings LIMIT 1');
   const max = parseInt(req.query.limit) || settings?.max_slides || 0;
-  const query = `SELECT * FROM photos WHERE is_slider = 1 AND is_active = 1 ORDER BY display_order ASC, id ASC${max > 0 ? ' LIMIT ' + max : ''}`;
-  res.json(db.prepare(query).all());
-});
+  const sql = `SELECT * FROM photos WHERE is_slider = 1 AND is_active = 1 ORDER BY display_order ASC, id ASC${max > 0 ? ' LIMIT ' + max : ''}`;
+  res.json(await pgAll(sql));
+}));
 
-app.get('/api/slider/settings', (req, res) => {
-  res.json(db.prepare('SELECT * FROM slider_settings LIMIT 1').get());
-});
+app.get('/api/slider/settings', wrap(async (req, res) => {
+  res.json(await pgGet('SELECT * FROM slider_settings LIMIT 1'));
+}));
 
-app.put('/api/slider/settings', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.put('/api/slider/settings', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { auto_play, interval_ms, show_arrows, show_dots, max_slides } = req.body;
-  db.prepare(`UPDATE slider_settings SET auto_play=?, interval_ms=?, show_arrows=?, show_dots=?, max_slides=?`)
-    .run(auto_play ? 1 : 0, parseInt(interval_ms)||4000, show_arrows ? 1 : 0, show_dots ? 1 : 0, parseInt(max_slides)||0);
+  await pgRun(`UPDATE slider_settings SET auto_play=?, interval_ms=?, show_arrows=?, show_dots=?, max_slides=?`,
+    [auto_play ? 1 : 0, parseInt(interval_ms) || 4000, show_arrows ? 1 : 0, show_dots ? 1 : 0, parseInt(max_slides) || 0]);
   res.json({ success: true });
-});
+}));
 
 // ==================== PHOTOS ====================
-app.get('/api/photos', (req, res) => {
+app.get('/api/photos', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
   const { album_id, limit = 50, offset = 0 } = req.query;
-  let query = `SELECT p.*, a.name as album_name FROM photos p LEFT JOIN albums a ON p.album_id = a.id WHERE p.is_active = 1`;
+  let sql = `SELECT p.*, a.name as album_name FROM photos p LEFT JOIN albums a ON p.album_id = a.id WHERE p.is_active = 1`;
   const params = [];
-  if (album_id) { query += ` AND p.album_id = ?`; params.push(album_id); }
-  const rows = db.prepare(query + ` ORDER BY p.display_order, p.id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
+  if (album_id) { sql += ` AND p.album_id = ?`; params.push(album_id); }
+  const rows = await pgAll(sql + ` ORDER BY p.display_order, p.id DESC LIMIT ? OFFSET ?`, [...params, Number(limit), Number(offset)]);
   res.json(rows.filter(r => hasAccess(userRole, r.access_level)));
-});
+}));
 
-app.get('/api/albums', (req, res) => {
+app.get('/api/albums', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
-  const albums = db.prepare(`SELECT a.*, (SELECT COUNT(*) FROM photos p WHERE p.album_id = a.id AND p.is_active = 1) as photo_count FROM albums a WHERE a.is_active = 1 ORDER BY a.display_order, a.event_date DESC`).all();
+  const albums = await pgAll(`SELECT a.*, (SELECT COUNT(*) FROM photos p WHERE p.album_id = a.id AND p.is_active = 1) as photo_count FROM albums a WHERE a.is_active = 1 ORDER BY a.display_order, a.event_date DESC`);
   res.json(albums.filter(a => hasAccess(userRole, a.access_level)));
-});
+}));
 
-app.post('/api/photos/upload', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.array('photos', 50), (req, res) => {
+app.post('/api/photos/upload', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.array('photos', 50), wrap(async (req, res) => {
   const { album_id, access_level = 'public', is_slider = 0, title } = req.body;
   const inserted = [];
-  req.files.forEach((f, i) => {
-    const r = db.prepare(`INSERT INTO photos (title, file_path, album_id, access_level, is_slider, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)`).run(
-      title || f.originalname, '/uploads/photos/' + f.filename, album_id || null, access_level, is_slider ? 1 : 0, req.user.id
-    );
-    inserted.push(r.lastInsertRowid);
-  });
+  for (const f of (req.files || [])) {
+    const url = await storeUpload('photos', f);
+    const r = await pgRun(`INSERT INTO photos (title, file_path, album_id, access_level, is_slider, uploaded_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      [title || f.originalname, url, album_id || null, access_level, is_slider ? 1 : 0, req.user.id]);
+    inserted.push(r.rows[0].id);
+  }
   res.json({ success: true, ids: inserted });
-});
+}));
 
-app.delete('/api/photos/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE photos SET is_active = 0 WHERE id = ?').run(req.params.id);
+app.delete('/api/photos/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE photos SET is_active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
-});
+}));
 
-app.put('/api/photos/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/photos/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { title, description, access_level, is_slider, display_order, album_id } = req.body;
-  db.prepare(`UPDATE photos SET title=?, description=?, access_level=?, is_slider=?, display_order=?, album_id=? WHERE id=?`).run(title, description, access_level, is_slider ? 1 : 0, display_order, album_id, req.params.id);
+  await pgRun(`UPDATE photos SET title=?, description=?, access_level=?, is_slider=?, display_order=?, album_id=? WHERE id=?`,
+    [title, description, access_level, is_slider ? 1 : 0, display_order, album_id, req.params.id]);
   res.json({ success: true });
-});
+}));
 
 // Albums CRUD
-app.post('/api/albums', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.post('/api/albums', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { name, description, event_date, access_level = 'public' } = req.body;
-  const r = db.prepare(`INSERT INTO albums (name, description, event_date, access_level) VALUES (?, ?, ?, ?)`).run(name, description, event_date, access_level);
-  syncSearchEntry('album', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const r = await pgRun(`INSERT INTO albums (name, description, event_date, access_level) VALUES (?, ?, ?, ?) RETURNING id`,
+    [name, description, event_date || null, access_level]);
+  await syncSearchEntry('album', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/albums/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/albums/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { name, description, event_date, access_level, display_order } = req.body;
-  db.prepare(`UPDATE albums SET name=?, description=?, event_date=?, access_level=?, display_order=? WHERE id=?`).run(name, description, event_date, access_level, display_order, req.params.id);
-  syncSearchEntry('album', req.params.id);
+  await pgRun(`UPDATE albums SET name=?, description=?, event_date=?, access_level=?, display_order=? WHERE id=?`,
+    [name, description, event_date || null, access_level, display_order, req.params.id]);
+  await syncSearchEntry('album', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/albums/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE albums SET is_active = 0 WHERE id = ?').run(req.params.id);
-  syncSearchEntry('album', req.params.id);
+app.delete('/api/albums/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE albums SET is_active = 0 WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('album', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== VIDEOS ====================
-app.get('/api/videos', (req, res) => {
+app.get('/api/videos', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
   const { limit = 20, offset = 0 } = req.query;
-  const videos = db.prepare(`SELECT * FROM videos WHERE is_active = 1 ORDER BY is_featured DESC, id DESC LIMIT ? OFFSET ?`).all(Number(limit), Number(offset));
+  const videos = await pgAll(`SELECT * FROM videos WHERE is_active = 1 ORDER BY is_featured DESC, id DESC LIMIT ? OFFSET ?`, [Number(limit), Number(offset)]);
   res.json(videos.filter(v => hasAccess(userRole, v.access_level)));
-});
+}));
 
-app.post('/api/videos', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), (req, res) => {
+app.post('/api/videos', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), wrap(async (req, res) => {
   const { title, description, youtube_url, thumbnail, access_level = 'public', is_featured = 0 } = req.body;
-  const r = db.prepare(`INSERT INTO videos (title, description, youtube_url, thumbnail, access_level, is_featured, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(title, description, youtube_url, thumbnail, access_level, is_featured ? 1 : 0, req.user.id);
-  syncSearchEntry('video', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const r = await pgRun(`INSERT INTO videos (title, description, youtube_url, thumbnail, access_level, is_featured, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [title, description, youtube_url, thumbnail, access_level, is_featured ? 1 : 0, req.user.id]);
+  await syncSearchEntry('video', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/videos/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/videos/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { title, description, youtube_url, thumbnail, access_level, is_featured } = req.body;
-  db.prepare(`UPDATE videos SET title=?, description=?, youtube_url=?, thumbnail=?, access_level=?, is_featured=? WHERE id=?`).run(title, description, youtube_url, thumbnail, access_level, is_featured ? 1 : 0, req.params.id);
-  syncSearchEntry('video', req.params.id);
+  await pgRun(`UPDATE videos SET title=?, description=?, youtube_url=?, thumbnail=?, access_level=?, is_featured=? WHERE id=?`,
+    [title, description, youtube_url, thumbnail, access_level, is_featured ? 1 : 0, req.params.id]);
+  await syncSearchEntry('video', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/videos/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE videos SET is_active = 0 WHERE id = ?').run(req.params.id);
-  syncSearchEntry('video', req.params.id);
+app.delete('/api/videos/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE videos SET is_active = 0 WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('video', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== NAV BUTTONS ====================
-app.get('/api/nav-buttons', (req, res) => {
+app.get('/api/nav-buttons', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
-  const buttons = db.prepare(`SELECT * FROM nav_buttons WHERE is_active = 1 ORDER BY display_order, id`).all();
+  const buttons = await pgAll(`SELECT * FROM nav_buttons WHERE is_active = 1 ORDER BY display_order, id`);
   res.json(buttons.filter(b => hasAccess(userRole, b.access_level)));
-});
+}));
 
-app.post('/api/nav-buttons', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.post('/api/nav-buttons', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { label, icon, url, description, category, access_level, color, display_order } = req.body;
-  const r = db.prepare(`INSERT INTO nav_buttons (label, icon, url, description, category, access_level, color, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(label, icon, url, description, category, access_level || 'public', color || '#2563eb', display_order || 0);
-  syncSearchEntry('nav', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const r = await pgRun(`INSERT INTO nav_buttons (label, icon, url, description, category, access_level, color, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [label, icon, url, description, category, access_level || 'public', color || '#2563eb', display_order || 0]);
+  await syncSearchEntry('nav', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/nav-buttons/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.put('/api/nav-buttons/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { label, icon, url, description, category, access_level, color, display_order, is_active } = req.body;
-  db.prepare(`UPDATE nav_buttons SET label=?, icon=?, url=?, description=?, category=?, access_level=?, color=?, display_order=?, is_active=? WHERE id=?`).run(label, icon, url, description, category, access_level, color, display_order, is_active ? 1 : 0, req.params.id);
-  syncSearchEntry('nav', req.params.id);
+  await pgRun(`UPDATE nav_buttons SET label=?, icon=?, url=?, description=?, category=?, access_level=?, color=?, display_order=?, is_active=? WHERE id=?`,
+    [label, icon, url, description, category, access_level, color, display_order, is_active ? 1 : 0, req.params.id]);
+  await syncSearchEntry('nav', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/nav-buttons/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('DELETE FROM nav_buttons WHERE id = ?').run(req.params.id);
-  syncSearchEntry('nav', req.params.id);
+app.delete('/api/nav-buttons/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('DELETE FROM nav_buttons WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('nav', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== RESOURCE CATEGORIES ====================
-app.get('/api/resource-categories', (req, res) => {
+app.get('/api/resource-categories', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
-  const cats = db.prepare(`SELECT * FROM resource_categories WHERE is_active = 1 ORDER BY display_order, id`).all();
+  const cats = await pgAll(`SELECT * FROM resource_categories WHERE is_active = 1 ORDER BY display_order, id`);
   res.json(cats.filter(c => hasAccess(userRole, c.access_level)));
-});
+}));
 
-app.post('/api/resource-categories', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.post('/api/resource-categories', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { name, slug, description, icon, color, access_level, parent_id, display_order } = req.body;
-  const r = db.prepare(`INSERT INTO resource_categories (name, slug, description, icon, color, access_level, parent_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(name, slug, description, icon, color, access_level || 'public', parent_id || null, display_order || 0);
-  syncSearchEntry('category', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const r = await pgRun(`INSERT INTO resource_categories (name, slug, description, icon, color, access_level, parent_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [name, slug, description, icon, color, access_level || 'public', parent_id || null, display_order || 0]);
+  await syncSearchEntry('category', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/resource-categories/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.put('/api/resource-categories/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { name, slug, description, icon, color, access_level, display_order, is_active } = req.body;
-  db.prepare(`UPDATE resource_categories SET name=?, slug=?, description=?, icon=?, color=?, access_level=?, display_order=?, is_active=? WHERE id=?`).run(name, slug, description, icon, color, access_level, display_order, is_active ? 1 : 0, req.params.id);
-  syncSearchEntry('category', req.params.id);
+  await pgRun(`UPDATE resource_categories SET name=?, slug=?, description=?, icon=?, color=?, access_level=?, display_order=?, is_active=? WHERE id=?`,
+    [name, slug, description, icon, color, access_level, display_order, is_active ? 1 : 0, req.params.id]);
+  await syncSearchEntry('category', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/resource-categories/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE resource_categories SET is_active = 0 WHERE id = ?').run(req.params.id);
-  syncSearchEntry('category', req.params.id);
+app.delete('/api/resource-categories/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE resource_categories SET is_active = 0 WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('category', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== RESOURCES ====================
-app.get('/api/resources', (req, res) => {
+app.get('/api/resources', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
   const { category_id, search, limit = 30, offset = 0 } = req.query;
-  let query = `SELECT r.*, c.name as category_name, u.full_name as uploader_name FROM resources r LEFT JOIN resource_categories c ON r.category_id = c.id LEFT JOIN users u ON r.uploaded_by = u.id WHERE r.is_active = 1`;
+  let sql = `SELECT r.*, c.name as category_name, u.full_name as uploader_name FROM resources r LEFT JOIN resource_categories c ON r.category_id = c.id LEFT JOIN users u ON r.uploaded_by = u.id WHERE r.is_active = 1`;
   const params = [];
-  if (category_id) { query += ` AND r.category_id = ?`; params.push(category_id); }
-  if (search) { query += ` AND (r.title LIKE ? OR r.description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
-  const rows = db.prepare(query + ` ORDER BY r.id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
+  if (category_id) { sql += ` AND r.category_id = ?`; params.push(category_id); }
+  if (search) { sql += ` AND (r.title ILIKE ? OR r.description ILIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
+  const rows = await pgAll(sql + ` ORDER BY r.id DESC LIMIT ? OFFSET ?`, [...params, Number(limit), Number(offset)]);
   res.json(rows.filter(r => hasAccess(userRole, r.access_level)));
-});
+}));
 
-app.post('/api/resources/upload', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('file'), (req, res) => {
+app.post('/api/resources/upload', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('file'), wrap(async (req, res) => {
   const { title, description, category_id, access_level = 'public', tags, external_url } = req.body;
-  const filePath = req.file ? '/uploads/resources/' + req.file.filename : null;
-  const r = db.prepare(`INSERT INTO resources (title, description, category_id, file_path, file_type, file_size, external_url, access_level, tags, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    title, description, category_id, filePath,
-    req.file?.mimetype, req.file?.size,
-    external_url, access_level, tags, req.user.id
-  );
-  syncSearchEntry('resource', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const filePath = await storeUpload('resources', req.file);
+  const r = await pgRun(`INSERT INTO resources (title, description, category_id, file_path, file_type, file_size, external_url, access_level, tags, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [title, description, category_id || null, filePath, req.file?.mimetype, req.file?.size, external_url, access_level, tags, req.user.id]);
+  await syncSearchEntry('resource', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/resources/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/resources/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { title, description, access_level, tags, external_url, category_id } = req.body;
-  db.prepare(`UPDATE resources SET title=?, description=?, access_level=?, tags=?, external_url=?, category_id=? WHERE id=?`).run(title, description, access_level, tags, external_url, category_id, req.params.id);
-  syncSearchEntry('resource', req.params.id);
+  await pgRun(`UPDATE resources SET title=?, description=?, access_level=?, tags=?, external_url=?, category_id=? WHERE id=?`,
+    [title, description, access_level, tags, external_url, category_id || null, req.params.id]);
+  await syncSearchEntry('resource', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/resources/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE resources SET is_active = 0 WHERE id = ?').run(req.params.id);
-  syncSearchEntry('resource', req.params.id);
+app.delete('/api/resources/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE resources SET is_active = 0 WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('resource', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.get('/api/resources/:id/download', (req, res) => {
+app.get('/api/resources/:id/download', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
-  const resource = db.prepare('SELECT * FROM resources WHERE id = ? AND is_active = 1').get(req.params.id);
+  const resource = await pgGet('SELECT * FROM resources WHERE id = ? AND is_active = 1', [req.params.id]);
   if (!resource) return res.status(404).json({ error: 'Không tìm thấy' });
   if (!hasAccess(userRole, resource.access_level)) return res.status(403).json({ error: 'Không có quyền truy cập' });
-  db.prepare('UPDATE resources SET download_count = download_count + 1 WHERE id = ?').run(req.params.id);
-  if (resource.file_path) {
-    const filePath = path.join(__dirname, resource.file_path);
-    res.download(filePath);
-  } else if (resource.external_url) {
-    res.redirect(resource.external_url);
-  }
-});
+  await pgRun('UPDATE resources SET download_count = download_count + 1 WHERE id = ?', [req.params.id]);
+  // file_path is now a Supabase Storage public URL; external_url is an external link.
+  if (resource.file_path) return res.redirect(resource.file_path);
+  if (resource.external_url) return res.redirect(resource.external_url);
+  res.status(404).json({ error: 'Tài nguyên không có file' });
+}));
 
 // ==================== POSTS / NEWS ====================
-app.get('/api/posts', (req, res) => {
+app.get('/api/posts', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
   const { category, limit = 20, offset = 0 } = req.query;
-  let query = `SELECT p.*, u.full_name as author_name FROM posts p LEFT JOIN users u ON p.author_id = u.id WHERE p.is_active = 1`;
+  let sql = `SELECT p.*, u.full_name as author_name FROM posts p LEFT JOIN users u ON p.author_id = u.id WHERE p.is_active = 1`;
   const params = [];
-  if (category) { query += ` AND p.category = ?`; params.push(category); }
-  const rows = db.prepare(query + ` ORDER BY p.is_pinned DESC, p.published_at DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
+  if (category) { sql += ` AND p.category = ?`; params.push(category); }
+  const rows = await pgAll(sql + ` ORDER BY p.is_pinned DESC, p.published_at DESC LIMIT ? OFFSET ?`, [...params, Number(limit), Number(offset)]);
   res.json(rows.filter(r => hasAccess(userRole, r.access_level)));
-});
+}));
 
-app.post('/api/posts', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('featured_image'), (req, res) => {
+app.post('/api/posts', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('featured_image'), wrap(async (req, res) => {
   const { title, content, excerpt, category = 'news', access_level = 'public', is_pinned = 0 } = req.body;
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
-  const img = req.file ? '/uploads/posts/' + req.file.filename : req.body.featured_image;
-  const r = db.prepare(`INSERT INTO posts (title, slug, content, excerpt, featured_image, category, access_level, is_pinned, author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, slug, content, excerpt, img, category, access_level, is_pinned ? 1 : 0, req.user.id);
-  syncSearchEntry('post', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const img = req.file ? await storeUpload('posts', req.file) : req.body.featured_image;
+  const r = await pgRun(`INSERT INTO posts (title, slug, content, excerpt, featured_image, category, access_level, is_pinned, author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [title, slug, content, excerpt, img, category, access_level, is_pinned ? 1 : 0, req.user.id]);
+  await syncSearchEntry('post', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/posts/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/posts/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { title, content, excerpt, category, access_level, is_pinned, featured_image } = req.body;
-  db.prepare(`UPDATE posts SET title=?, content=?, excerpt=?, category=?, access_level=?, is_pinned=?, featured_image=? WHERE id=?`).run(title, content, excerpt, category, access_level, is_pinned ? 1 : 0, featured_image, req.params.id);
-  syncSearchEntry('post', req.params.id);
+  await pgRun(`UPDATE posts SET title=?, content=?, excerpt=?, category=?, access_level=?, is_pinned=?, featured_image=? WHERE id=?`,
+    [title, content, excerpt, category, access_level, is_pinned ? 1 : 0, featured_image, req.params.id]);
+  await syncSearchEntry('post', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/posts/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('UPDATE posts SET is_active = 0 WHERE id = ?').run(req.params.id);
-  syncSearchEntry('post', req.params.id);
+app.delete('/api/posts/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('UPDATE posts SET is_active = 0 WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('post', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== TEACHER PROFILES ====================
-app.get('/api/teachers', (req, res) => {
-  const teachers = db.prepare(`SELECT * FROM teacher_profiles WHERE is_public = 1 ORDER BY display_order, id`).all();
+app.get('/api/teachers', wrap(async (req, res) => {
+  const teachers = await pgAll(`SELECT * FROM teacher_profiles WHERE is_public = 1 ORDER BY display_order, id`);
   res.json(teachers);
-});
+}));
 
-app.post('/api/teachers', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('avatar'), (req, res) => {
+app.post('/api/teachers', requireAuth(['superadmin', 'admin1', 'admin2', 'teacher']), upload.single('avatar'), wrap(async (req, res) => {
   const { display_name, title, subject, school, bio, email, phone, achievements, is_public = 1 } = req.body;
-  const avatar = req.file ? '/uploads/teachers/' + req.file.filename : req.body.avatar;
-  const r = db.prepare(`INSERT INTO teacher_profiles (display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public ? 1 : 0, req.user.id);
-  syncSearchEntry('teacher', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const avatar = req.file ? await storeUpload('teachers', req.file) : req.body.avatar;
+  const r = await pgRun(`INSERT INTO teacher_profiles (display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public ? 1 : 0, req.user.id]);
+  await syncSearchEntry('teacher', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/teachers/:id', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.put('/api/teachers/:id', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
   const { display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public, display_order } = req.body;
-  db.prepare(`UPDATE teacher_profiles SET display_name=?, title=?, subject=?, school=?, bio=?, email=?, phone=?, avatar=?, achievements=?, is_public=?, display_order=? WHERE id=?`).run(display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public ? 1 : 0, display_order, req.params.id);
-  syncSearchEntry('teacher', req.params.id);
+  await pgRun(`UPDATE teacher_profiles SET display_name=?, title=?, subject=?, school=?, bio=?, email=?, phone=?, avatar=?, achievements=?, is_public=?, display_order=? WHERE id=?`,
+    [display_name, title, subject, school, bio, email, phone, avatar, achievements, is_public ? 1 : 0, display_order, req.params.id]);
+  await syncSearchEntry('teacher', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/teachers/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('DELETE FROM teacher_profiles WHERE id = ?').run(req.params.id);
-  syncSearchEntry('teacher', req.params.id);
+app.delete('/api/teachers/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('DELETE FROM teacher_profiles WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('teacher', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== CHATBOX LINKS ====================
-app.get('/api/chatbox-links', (req, res) => {
+app.get('/api/chatbox-links', wrap(async (req, res) => {
   const userRole = req.user?.role || 'public';
-  const links = db.prepare(`SELECT * FROM chatbox_links WHERE is_active = 1 ORDER BY display_order, id`).all();
+  const links = await pgAll(`SELECT * FROM chatbox_links WHERE is_active = 1 ORDER BY display_order, id`);
   res.json(links.filter(l => hasAccess(userRole, l.access_level)));
-});
+}));
 
-app.post('/api/chatbox-links', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.post('/api/chatbox-links', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { title, url, description, platform, access_level = 'student', display_order = 0 } = req.body;
-  const r = db.prepare(`INSERT INTO chatbox_links (title, url, description, platform, access_level, display_order) VALUES (?, ?, ?, ?, ?, ?)`).run(title, url, description, platform, access_level, display_order);
-  syncSearchEntry('chatbox', r.lastInsertRowid);
-  res.json({ success: true, id: r.lastInsertRowid });
-});
+  const r = await pgRun(`INSERT INTO chatbox_links (title, url, description, platform, access_level, display_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+    [title, url, description, platform, access_level, display_order]);
+  await syncSearchEntry('chatbox', r.rows[0].id);
+  res.json({ success: true, id: r.rows[0].id });
+}));
 
-app.put('/api/chatbox-links/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.put('/api/chatbox-links/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { title, url, description, platform, access_level, display_order, is_active } = req.body;
-  db.prepare(`UPDATE chatbox_links SET title=?, url=?, description=?, platform=?, access_level=?, display_order=?, is_active=? WHERE id=?`).run(title, url, description, platform, access_level, display_order, is_active ? 1 : 0, req.params.id);
-  syncSearchEntry('chatbox', req.params.id);
+  await pgRun(`UPDATE chatbox_links SET title=?, url=?, description=?, platform=?, access_level=?, display_order=?, is_active=? WHERE id=?`,
+    [title, url, description, platform, access_level, display_order, is_active ? 1 : 0, req.params.id]);
+  await syncSearchEntry('chatbox', req.params.id);
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/chatbox-links/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  db.prepare('DELETE FROM chatbox_links WHERE id = ?').run(req.params.id);
-  syncSearchEntry('chatbox', req.params.id);
+app.delete('/api/chatbox-links/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  await pgRun('DELETE FROM chatbox_links WHERE id = ?', [req.params.id]);
+  await syncSearchEntry('chatbox', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ==================== USER MANAGEMENT ====================
-app.get('/api/users', requireAuth(['superadmin', 'admin1']), (req, res) => {
-  const users = db.prepare(`SELECT id, username, full_name, email, role, is_active, created_at FROM users ORDER BY created_at DESC`).all();
+app.get('/api/users', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
+  const users = await pgAll(`SELECT id, username, full_name, email, role, is_active, created_at FROM users ORDER BY created_at DESC`);
   res.json(users);
-});
+}));
 
-app.post('/api/users', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.post('/api/users', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { username, password, full_name, email, role } = req.body;
-  const allowedRoles = ['student', 'teacher', 'admin2', 'admin1'];
   if (req.user.role !== 'superadmin' && role === 'admin1') return res.status(403).json({ error: 'Không có quyền' });
   try {
     const hash = bcrypt.hashSync(password, 10);
-    const r = db.prepare(`INSERT INTO users (username, password, full_name, email, role) VALUES (?, ?, ?, ?, ?)`).run(username, hash, full_name, email, role || 'student');
-    res.json({ success: true, id: r.lastInsertRowid });
+    const r = await pgRun(`INSERT INTO users (username, password, full_name, email, role) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+      [username, hash, full_name, email, role || 'student']);
+    res.json({ success: true, id: r.rows[0].id });
   } catch (e) {
     res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
   }
-});
+}));
 
-app.put('/api/users/:id', requireAuth(['superadmin', 'admin1']), (req, res) => {
+app.put('/api/users/:id', requireAuth(['superadmin', 'admin1']), wrap(async (req, res) => {
   const { full_name, email, role, is_active, password } = req.body;
   if (req.user.role !== 'superadmin' && role === 'superadmin') return res.status(403).json({ error: 'Không có quyền' });
   if (password) {
     const hash = bcrypt.hashSync(password, 10);
-    db.prepare(`UPDATE users SET full_name=?, email=?, role=?, is_active=?, password=? WHERE id=?`).run(full_name, email, role, is_active ? 1 : 0, hash, req.params.id);
+    await pgRun(`UPDATE users SET full_name=?, email=?, role=?, is_active=?, password=? WHERE id=?`,
+      [full_name, email, role, is_active ? 1 : 0, hash, req.params.id]);
   } else {
-    db.prepare(`UPDATE users SET full_name=?, email=?, role=?, is_active=? WHERE id=?`).run(full_name, email, role, is_active ? 1 : 0, req.params.id);
+    await pgRun(`UPDATE users SET full_name=?, email=?, role=?, is_active=? WHERE id=?`,
+      [full_name, email, role, is_active ? 1 : 0, req.params.id]);
   }
   res.json({ success: true });
-});
+}));
 
-app.delete('/api/users/:id', requireAuth(['superadmin']), (req, res) => {
-  db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id);
+app.delete('/api/users/:id', requireAuth(['superadmin']), wrap(async (req, res) => {
+  await pgRun('UPDATE users SET is_active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
-});
+}));
 
 // ==================== DASHBOARD STATS ====================
-app.get('/api/admin/stats', requireAuth(['superadmin', 'admin1', 'admin2']), (req, res) => {
+app.get('/api/admin/stats', requireAuth(['superadmin', 'admin1', 'admin2']), wrap(async (req, res) => {
+  const one = async (sql) => Number((await pgGet(sql)).c);
   res.json({
-    users: db.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get().c,
-    photos: db.prepare('SELECT COUNT(*) as c FROM photos WHERE is_active = 1').get().c,
-    videos: db.prepare('SELECT COUNT(*) as c FROM videos WHERE is_active = 1').get().c,
-    resources: db.prepare('SELECT COUNT(*) as c FROM resources WHERE is_active = 1').get().c,
-    posts: db.prepare('SELECT COUNT(*) as c FROM posts WHERE is_active = 1').get().c,
-    teachers: db.prepare('SELECT COUNT(*) as c FROM teacher_profiles WHERE is_public = 1').get().c,
-    albums: db.prepare('SELECT COUNT(*) as c FROM albums WHERE is_active = 1').get().c,
+    users: await one('SELECT COUNT(*) as c FROM users WHERE is_active = 1'),
+    photos: await one('SELECT COUNT(*) as c FROM photos WHERE is_active = 1'),
+    videos: await one('SELECT COUNT(*) as c FROM videos WHERE is_active = 1'),
+    resources: await one('SELECT COUNT(*) as c FROM resources WHERE is_active = 1'),
+    posts: await one('SELECT COUNT(*) as c FROM posts WHERE is_active = 1'),
+    teachers: await one('SELECT COUNT(*) as c FROM teacher_profiles WHERE is_public = 1'),
+    albums: await one('SELECT COUNT(*) as c FROM albums WHERE is_active = 1'),
   });
-});
+}));
 
 // ==================== SMART SEARCH (Phase 1: Fast Search) ====================
 const suggestCache = new Map(); // cacheKey -> { data, expires }
 
-function buildMatchQuery(q) {
-  return normalizeText(q).split(' ').filter(Boolean).map(t => `${t}*`).join(' ');
+// Score a candidate row (higher = more relevant): title hits weigh more than body hits.
+function scoreRow(row, terms) {
+  const titleNorm = normalizeText(row.title || '');
+  let score = 0;
+  for (const t of terms) {
+    if (titleNorm.includes(t)) score += 2;
+    else if ((row.normalized || '').includes(t)) score += 1;
+  }
+  // small bonus for whole-phrase match in the title
+  if (titleNorm.includes(terms.join(' '))) score += 1;
+  return score;
 }
 
-function performSearch(userRole, q, type = 'all', page = 1, limit = 20) {
-  const matchQuery = buildMatchQuery(q);
-  if (!matchQuery) return { results: [], total: 0, page: Number(page), limit: Number(limit) };
-
-  let sql = `
-    SELECT si.type, si.rowref, si.title, si.body, si.image, si.url, si.access_level, bm25(search_fts) as rank
-    FROM search_fts JOIN search_index si ON si.id = search_fts.rowid
-    WHERE search_fts.normalized MATCH ?
-  `;
-  const params = [matchQuery];
-  if (type !== 'all') { sql += ' AND si.type = ?'; params.push(type); }
-  sql += ' ORDER BY rank LIMIT 200';
+async function performSearch(userRole, q, type = 'all', page = 1, limit = 20) {
+  const normalized = normalizeText(q);
+  const terms = normalized.split(' ').filter(Boolean);
+  if (terms.length === 0) return { results: [], total: 0, page: Number(page), limit: Number(limit) };
 
   let rows;
   try {
-    rows = db.prepare(sql).all(...params);
+    rows = await searchRows(normalized, type, 300);
   } catch (e) {
+    console.error('search error:', e.message);
     return { results: [], total: 0, page: Number(page), limit: Number(limit) };
   }
 
-  const filtered = rows.filter(r => hasAccess(userRole, r.access_level));
+  let filtered = rows.filter(r => hasAccess(userRole, r.access_level));
+  filtered.forEach(r => { r.relScore = scoreRow(r, terms); });
 
-  // Apply continuous-learning boost: final_score = bm25_norm * 0.6 + boost_norm * 0.4
-  const boostMap = getBoostMap(normalizeText(q));
+  // Apply continuous-learning boost: final = relevance_norm * 0.6 + boost_norm * 0.4
+  const boostMap = await getBoostMap(normalized);
   if (boostMap.size > 0 && filtered.length > 0) {
-    const ranks = filtered.map(r => r.rank);
-    const minRank = Math.min(...ranks);
-    const maxRank = Math.max(...ranks);
-    const rankRange = maxRank - minRank || 1;
+    const maxRel = Math.max(...filtered.map(r => r.relScore), 0.0001);
     const maxBoost = Math.max(...filtered.map(r => boostMap.get(`${r.type}:${r.rowref}`) || 0), 0.0001);
     filtered.forEach(r => {
-      const bm25Norm = (maxRank - r.rank) / rankRange; // 0..1, higher = more relevant
+      const relNorm = r.relScore / maxRel;
       const boostNorm = (boostMap.get(`${r.type}:${r.rowref}`) || 0) / maxBoost;
-      r.finalScore = bm25Norm * 0.6 + boostNorm * 0.4;
+      r.finalScore = relNorm * 0.6 + boostNorm * 0.4;
     });
     filtered.sort((a, b) => b.finalScore - a.finalScore);
+  } else {
+    filtered.sort((a, b) => b.relScore - a.relScore);
   }
 
   const total = filtered.length;
@@ -659,59 +662,56 @@ function performSearch(userRole, q, type = 'all', page = 1, limit = 20) {
   return { results, total, page: Number(page), limit: Number(limit) };
 }
 
-app.get('/api/search', (req, res) => {
+app.get('/api/search', wrap(async (req, res) => {
   const start = Date.now();
   const userRole = req.user?.role || 'public';
   const { q = '', type = 'all', page = 1, limit = 20 } = req.query;
-  const result = performSearch(userRole, q, type, page, limit);
+  const result = await performSearch(userRole, q, type, page, limit);
   const time_ms = Date.now() - start;
   console.log(`🔍 GET /api/search q="${q}" type=${type} -> ${result.total} results in ${time_ms}ms`);
   res.json({ ...result, time_ms });
-});
+}));
 
-app.get('/api/search/suggest', (req, res) => {
+app.get('/api/search/suggest', wrap(async (req, res) => {
   const start = Date.now();
   const userRole = req.user?.role || 'public';
   const q = (req.query.q || '').trim();
   if (!q) return res.json([]);
 
-  const cacheKey = `${userRole}:${normalizeText(q)}`;
+  const normalized = normalizeText(q);
+  const cacheKey = `${userRole}:${normalized}`;
   const cached = suggestCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return res.json(cached.data);
-
-  const matchQuery = buildMatchQuery(q);
-  if (!matchQuery) return res.json([]);
+  if (!normalized) return res.json([]);
 
   let rows;
   try {
-    rows = db.prepare(`
-      SELECT si.type, si.rowref, si.title, si.url, si.access_level, bm25(search_fts) as rank
-      FROM search_fts JOIN search_index si ON si.id = search_fts.rowid
-      WHERE search_fts.normalized MATCH ?
-      ORDER BY rank LIMIT 30
-    `).all(matchQuery);
+    rows = await searchRows(normalized, 'all', 30);
   } catch (e) {
     return res.json([]);
   }
 
+  const terms = normalized.split(' ').filter(Boolean);
   const data = rows
     .filter(r => hasAccess(userRole, r.access_level))
+    .map(r => ({ ...r, relScore: scoreRow(r, terms) }))
+    .sort((a, b) => b.relScore - a.relScore)
     .slice(0, 8)
     .map(r => ({ type: r.type, id: r.rowref, title: r.title, url: r.url }));
 
   suggestCache.set(cacheKey, { data, expires: Date.now() + 30000 });
   console.log(`💡 GET /api/search/suggest q="${q}" -> ${data.length} suggestions in ${Date.now() - start}ms`);
   res.json(data);
-});
+}));
 
 // ==================== SMART SEARCH (Phase 3: Continuous Learning) ====================
-app.post('/api/search/track', (req, res) => {
-  const { session_id, query, intent, result_id, result_type, result_position, time_to_click_ms, used_ai_assistant } = req.body || {};
-  if (!query || result_id == null || !result_type) return res.status(400).json({ error: 'Thiếu dữ liệu' });
+app.post('/api/search/track', wrap(async (req, res) => {
+  const { session_id, query: q, intent, result_id, result_type, result_position, time_to_click_ms, used_ai_assistant } = req.body || {};
+  if (!q || result_id == null || !result_type) return res.status(400).json({ error: 'Thiếu dữ liệu' });
 
-  trackSearchEvent({
+  await trackSearchEvent({
     session_id,
-    query,
+    query: q,
     intent,
     result_id,
     result_type,
@@ -720,46 +720,50 @@ app.post('/api/search/track', (req, res) => {
     used_ai_assistant,
   });
   res.json({ ok: true });
-});
+}));
 
 // Recalculate search boost scores hourly from click analytics
-cron.schedule('0 * * * *', () => {
+cron.schedule('0 * * * *', async () => {
   const start = Date.now();
-  const updated = recalculateBoosts();
-  console.log(`📈 Search boost recalculated: ${updated} entries in ${Date.now() - start}ms`);
+  try {
+    const updated = await recalculateBoosts();
+    console.log(`📈 Search boost recalculated: ${updated} entries in ${Date.now() - start}ms`);
+  } catch (e) {
+    console.error('boost recalculation error:', e.message);
+  }
 });
 
 // ==================== SMART SEARCH (Phase 2: AI Search Assistant) ====================
 app.post('/api/search/ai-assistant', async (req, res) => {
   const start = Date.now();
   const userRole = req.user?.role || 'public';
-  const { query = '', conversation_history = [] } = req.body || {};
+  const { query: q = '', conversation_history = [] } = req.body || {};
 
-  if (!query.trim()) {
+  if (!q.trim()) {
     return res.json({ needs_clarification: true, clarification_question: 'Bạn muốn tìm tài liệu gì? Hãy cho biết môn học, lớp hoặc loại tài liệu nhé.' });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    const fallback = performSearch(userRole, query, 'all', 1, 5);
+    const fallback = await performSearch(userRole, q, 'all', 1, 5);
     const time_ms = Date.now() - start;
-    console.log(`🤖 POST /api/search/ai-assistant (no API key, fallback search) q="${query}" -> ${fallback.total} results in ${time_ms}ms`);
+    console.log(`🤖 POST /api/search/ai-assistant (no API key, fallback search) q="${q}" -> ${fallback.total} results in ${time_ms}ms`);
     return res.json({
       needs_clarification: false,
       explanation: 'Trợ lý AI chưa được cấu hình (thiếu ANTHROPIC_API_KEY) nên em đã tìm nhanh theo từ khóa bạn nhập.',
       results: fallback.results,
       follow_up_question: '',
-      intent: { search_query: query },
+      intent: { search_query: q },
       response_time_ms: time_ms,
     });
   }
 
   try {
-    const analysis = await analyzeQuery(apiKey, query, conversation_history);
+    const analysis = await analyzeQuery(apiKey, q, conversation_history);
 
     if (analysis.needs_clarification) {
       const time_ms = Date.now() - start;
-      console.log(`🤖 POST /api/search/ai-assistant q="${query}" -> needs clarification in ${time_ms}ms`);
+      console.log(`🤖 POST /api/search/ai-assistant q="${q}" -> needs clarification in ${time_ms}ms`);
       return res.json({
         needs_clarification: true,
         clarification_question: analysis.clarification_question || 'Bạn có thể nói rõ hơn không?',
@@ -768,11 +772,11 @@ app.post('/api/search/ai-assistant', async (req, res) => {
       });
     }
 
-    const searchResult = performSearch(userRole, analysis.search_query || query, 'all', 1, 5);
-    const explained = await explainResults(apiKey, query, searchResult.results, analysis);
+    const searchResult = await performSearch(userRole, analysis.search_query || q, 'all', 1, 5);
+    const explained = await explainResults(apiKey, q, searchResult.results, analysis);
 
     const time_ms = Date.now() - start;
-    console.log(`🤖 POST /api/search/ai-assistant q="${query}" -> ${searchResult.total} results in ${time_ms}ms`);
+    console.log(`🤖 POST /api/search/ai-assistant q="${q}" -> ${searchResult.total} results in ${time_ms}ms`);
     res.json({
       needs_clarification: false,
       explanation: explained.explanation,
@@ -784,13 +788,13 @@ app.post('/api/search/ai-assistant', async (req, res) => {
   } catch (e) {
     const time_ms = Date.now() - start;
     console.error(`🤖 POST /api/search/ai-assistant error: ${e.message}`);
-    const fallback = performSearch(userRole, query, 'all', 1, 5);
+    const fallback = await performSearch(userRole, q, 'all', 1, 5);
     res.json({
       needs_clarification: false,
       explanation: 'Trợ lý AI gặp lỗi tạm thời, em đã tìm nhanh theo từ khóa bạn nhập.',
       results: fallback.results,
       follow_up_question: '',
-      intent: { search_query: query },
+      intent: { search_query: q },
       response_time_ms: time_ms,
     });
   }
@@ -800,15 +804,31 @@ app.post('/api/search/ai-assistant', async (req, res) => {
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/{*path}', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-initPostgresDatabase()
-  .then(() => {
+// Central error handler (for wrapped async routes)
+app.use((err, req, res, next) => {
+  console.error('Unhandled route error:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Lỗi máy chủ' });
+});
+
+// ==================== BOOT ====================
+(async () => {
+  try {
+    await initPostgresDatabase();
+    await initSearchIndex();
+    const t = Date.now();
+    await rebuildSearchIndex();
+    console.log(`🔎 Search index built in ${Date.now() - t}ms`);
+    if (!storageConfigured()) {
+      console.warn('⚠️  Supabase Storage CHƯA cấu hình — upload ảnh/file sẽ lỗi. Cần SUPABASE_URL + SUPABASE_SERVICE_KEY + bucket "uploads".');
+    }
     app.listen(PORT, () => {
       console.log(`\n🚀 Server chạy tại: http://localhost:${PORT}`);
       console.log(`📊 Admin Dashboard: http://localhost:${PORT}/admin`);
       console.log(`🔑 Tài khoản Admin: superadmin / Admin@2024!`);
     });
-  })
-  .catch(err => {
-    console.error('❌ Failed to initialize Postgres database:', err);
+  } catch (err) {
+    console.error('❌ Failed to initialize database:', err);
     process.exit(1);
-  });
+  }
+})();
