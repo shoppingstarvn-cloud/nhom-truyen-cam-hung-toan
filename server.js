@@ -832,3 +832,6 @@ app.use((err, req, res, next) => {
     process.exit(1);
   }
 })();
+
+// ==================== XUẤT ỨNG DỤNG CHO VERCEL ====================
+module.exports = app;
