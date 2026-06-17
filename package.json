@@ -1,24 +1,21 @@
 {
   "name": "educational-website",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Siêu phẩm Bê tông Cửa Âu",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build": "echo 'No build step needed'"
+    "install-all": "npm install"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": [],
-  "author": "",
+  "author": "Giam Doc Cua Au",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -27,6 +24,7 @@
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "pg": "^8.21.0",
+    "pg-pool": "^3.14.0",
     "uuid": "^14.0.0"
   }
 }
