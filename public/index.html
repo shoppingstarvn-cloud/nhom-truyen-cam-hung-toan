@@ -1,440 +1,124 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nhóm truyền cảm hứng Toán</title>
-<meta name="description" content="Nhóm truyền cảm hứng Toán - Kho Tài Nguyên Giáo Dục Chất Lượng Cao">
-<meta property="og:title" content="Nhóm truyền cảm hứng Toán">
-<meta property="og:description" content="Kho Tài Nguyên Giáo Dục Chất Lượng Cao">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://nhom-truyen-cam-hung-toan-production.up.railway.app/">
-<meta property="og:site_name" content="Nhóm truyền cảm hứng Toán">
-<link rel="stylesheet" href="/css/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CÔNG TY CỔ PHẦN THƯƠNG MẠI CỬA ÂU</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* HIỆU ỨNG CHỮ NEON NHẤP NHÁY CỰC MẠNH */
+        .neon-text-cuaau {
+            color: #1e3a5f;
+            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #2563eb, 0 0 20px #2563eb;
+            animation: blink 3s infinite alternate;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; text-shadow: 0 0 2px #fff, 0 0 5px #2563eb; }
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50 font-sans min-h-screen">
 
-<!-- HEADER -->
-<header class="header" id="header">
-  <div class="header-top">
-    <div class="container">
-      <div class="header-top-inner">
-        <div class="header-contact">
-          <span id="h-phone"><i class="fas fa-phone"></i> <span id="site-phone"></span></span>
-          <span id="h-email"><i class="fas fa-envelope"></i> <span id="site-email"></span></span>
-        </div>
-        <div class="header-social" id="header-social"></div>
-        <div class="header-auth">
-          <div id="auth-guest" style="display:none">
-            <button class="btn-login" onclick="openLoginModal()"><i class="fas fa-sign-in-alt"></i> Đăng nhập</button>
-          </div>
-          <div id="auth-user" style="display:none">
-            <div class="user-menu">
-              <img id="user-avatar" src="/images/default-avatar.png" class="user-avatar-sm" alt="">
-              <span id="user-name"></span>
-              <div class="user-dropdown">
-                <a href="#" onclick="openAccountModal()"><i class="fas fa-id-card"></i> Tài khoản của tôi</a>
-                <a href="#" id="admin-link" style="display:none" onclick="window.open('/admin','_blank')"><i class="fas fa-cog"></i> Quản trị</a>
-                <a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
-              </div>
+    <header class="w-full bg-white shadow-md relative z-50">
+        <div class="container mx-auto px-4 py-6 flex flex-col items-center justify-center text-center border-b border-gray-100">
+            <h1 class="text-3xl md:text-5xl font-extrabold mb-4 uppercase neon-text-cuaau tracking-wide">
+                CÔNG TY CỔ PHẦN THƯƠNG MẠI CỬA ÂU
+            </h1>
+            <div class="bg-gray-50 rounded-xl py-3 px-6 shadow-inner text-gray-800 text-sm md:text-base font-medium w-full max-w-4xl border border-gray-200">
+                <p class="mb-2"><span class="font-bold text-red-600"><i class="fa-solid fa-location-dot mr-1"></i> Địa chỉ:</span> Thôn 6, Pháp Cổ, Xã Việt Khê, Hải Phòng</p>
+                <div class="flex flex-col md:flex-row md:space-x-8 justify-center items-center gap-2 md:gap-0">
+                    <p><span class="font-bold text-red-600"><i class="fa-solid fa-phone mr-1"></i> SĐT:</span> 0934640601</p>
+                    <p><span class="font-bold text-red-600"><i class="fa-solid fa-envelope mr-1"></i> Email:</span> congtycuaau8386@gmail.com</p>
+                    <p><span class="font-bold text-red-600"><i class="fa-solid fa-id-card mr-1"></i> MST:</span> 0202289923</p>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
-    </div>
-  </div>
-  <div class="header-main">
-    <div class="container">
-      <div class="header-main-inner">
-        <div class="logo-area">
-          <img id="site-logo" src="/images/logo-placeholder.png" onerror="this.style.display='none'" alt="">
-          <div class="logo-text">
-            <h1 id="site-name">NHÓM TRUYỀN CẢM HỨNG TOÁN</h1>
-            <p id="site-tagline"><span class="tagline-line">Truyền cảm hứng giúp Ước mơ vươn cao vươn xa</span><span class="tagline-line">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</span></p>
-          </div>
-        </div>
-        <div class="search-bar-area" id="search-bar-area">
-          <div class="search-input-wrap">
-            <i class="fas fa-search search-icon"></i>
-            <input type="text" id="search-input" class="search-input" placeholder="Tìm tài liệu, video, bài viết, thầy cô..." autocomplete="off">
-            <button class="search-ai-toggle" id="search-ai-toggle" title="Hỏi trợ lý AI tìm giúp bạn">
-              <i class="fas fa-robot"></i><span class="search-ai-label">Hỏi AI</span>
-            </button>
-          </div>
-          <div class="search-dropdown" id="search-dropdown"></div>
-        </div>
-        <nav class="main-nav">
-          <button class="nav-toggle" onclick="toggleNav()"><i class="fas fa-bars"></i></button>
-          <ul class="nav-list" id="nav-list">
-            <li><a href="#home">Trang chủ</a></li>
-            <li><a href="#resources">Kho tài nguyên</a></li>
-            <li><a href="#gallery">Hình ảnh</a></li>
-            <li><a href="#videos">Video</a></li>
-            <li><a href="#teachers">Thầy Cô</a></li>
-            <li><a href="#news">Tin tức</a></li>
-            <li><a href="#contact">Liên hệ</a></li>
-          </ul>
+
+        <nav class="bg-blue-900 text-white w-full">
+            <div class="container mx-auto px-4">
+                <ul class="flex flex-wrap justify-center space-x-4 md:space-x-8 py-3 font-semibold text-xs md:text-base">
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">TRANG CHỦ</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">GIỚI THIỆU</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">BÊ TÔNG THƯƠNG PHẨM</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">CẤU KIỆN ĐÚC SẴN</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">BƠM BÊ TÔNG</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">DỰ ÁN TIÊU BIỂU</li>
+                    <li class="hover:text-yellow-400 cursor-pointer transition-colors">VIDEO THỰC TẾ</li>
+                </ul>
+            </div>
         </nav>
-      </div>
-    </div>
-  </div>
-</header>
+    </header>
 
-<!-- HERO WELCOME (static, always on top) -->
-<section class="hero-slider hero-welcome" id="home">
-  <div class="slider-track">
-    <div class="slide-placeholder">
-      <div class="slide-content">
-        <h2>🎓 Chào mừng đến với</h2>
-        <h1 id="hero-title">NHÓM TRUYỀN CẢM HỨNG TOÁN</h1>
-        <p id="hero-tagline"><span class="tagline-line">Truyền cảm hứng giúp ước mơ vươn cao vươn xa</span><span class="tagline-line">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</span></p>
-        <div class="hero-btns">
-          <a href="#resources" class="btn-hero-primary">Khám phá kho tài nguyên</a>
-          <a href="#teachers" class="btn-hero-outline">Gặp gỡ Thầy Cô</a>
+    <section class="w-full relative z-0 bg-gray-300 min-h-[350px] flex items-center justify-center border-b border-gray-200">
+        <div id="main-slider" class="w-full text-center">
+            <p class="text-gray-600 font-medium text-lg"><i class="fa-regular fa-images mr-2"></i> [Hệ thống mã Slider ảnh trượt cũ của anh chạy tại đây]</p>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- PHOTO SLIDER (runs below the welcome hero) -->
-<section class="hero-slider photo-slider" id="photo-slider" style="display:none">
-  <div class="slider-track" id="slider-track">
-    <!-- Slides injected by JS -->
-  </div>
-  <button class="slider-btn slider-prev" id="slider-prev" onclick="changeSlide(-1)"><i class="fas fa-chevron-left"></i></button>
-  <button class="slider-btn slider-next" id="slider-next" onclick="changeSlide(1)"><i class="fas fa-chevron-right"></i></button>
-  <div class="slider-dots" id="slider-dots"></div>
-</section>
-
-<!-- STATS BAR -->
-<section class="stats-bar">
-  <div class="container">
-    <div class="stats-grid" id="stats-grid">
-      <div class="stat-item"><i class="fas fa-book"></i><span class="stat-num" id="stat-resources">0</span><span>Tài liệu</span></div>
-      <div class="stat-item"><i class="fas fa-camera"></i><span class="stat-num" id="stat-photos">0</span><span>Hình ảnh</span></div>
-      <div class="stat-item"><i class="fas fa-video"></i><span class="stat-num" id="stat-videos">0</span><span>Video</span></div>
-      <div class="stat-item"><i class="fas fa-chalkboard-teacher"></i><span class="stat-num" id="stat-teachers">0</span><span>Thầy Cô</span></div>
-    </div>
-  </div>
-</section>
-
-<!-- QUICK ACCESS BUTTONS -->
-<section class="quick-access" id="resources">
-  <div class="container">
-    <div class="section-header">
-      <h2>🗂️ Kho Tài Nguyên</h2>
-      <p>Truy cập nhanh các kho tài liệu của nhóm</p>
-    </div>
-    <div class="resource-grid" id="resource-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- CUSTOM NAV BUTTONS -->
-<section class="nav-buttons-section">
-  <div class="container">
-    <div class="section-header">
-      <h2>🔗 Truy cập nhanh</h2>
-      <p>Các liên kết và công cụ hữu ích</p>
-    </div>
-    <div class="nav-buttons-grid" id="nav-buttons-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- PHOTO GALLERY -->
-<section class="gallery-section" id="gallery">
-  <div class="container">
-    <div class="section-header">
-      <h2>📸 Hình ảnh hoạt động</h2>
-      <p>Khoảnh khắc đáng nhớ của nhóm</p>
-    </div>
-    <div class="album-tabs" id="album-tabs"></div>
-    <div class="photo-grid" id="photo-grid">
-      <!-- Injected by JS -->
-    </div>
-    <div class="section-footer">
-      <button class="btn-load-more" id="load-more-photos" onclick="loadMorePhotos()">Xem thêm ảnh <i class="fas fa-arrow-right"></i></button>
-    </div>
-  </div>
-</section>
-
-<!-- VIDEOS -->
-<section class="video-section" id="videos">
-  <div class="container">
-    <div class="section-header">
-      <h2>🎬 Video hoạt động</h2>
-      <p>Ghi lại những khoảnh khắc ý nghĩa</p>
-    </div>
-    <div class="video-grid" id="video-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- TEACHERS -->
-<section class="teachers-section" id="teachers">
-  <div class="container">
-    <div class="section-header">
-      <h2>👨‍🏫 Thành viên nhóm</h2>
-      <p>Đội ngũ Thầy Cô tài năng và tâm huyết</p>
-    </div>
-    <div class="teachers-grid" id="teachers-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- CHATBOX LINKS -->
-<section class="chatbox-section" id="chatbox">
-  <div class="container">
-    <div class="section-header">
-      <h2>💬 Hỏi đáp & Luyện tập</h2>
-      <p>Chat box hỏi đáp và luyện đề cho học sinh</p>
-    </div>
-    <div class="chatbox-grid" id="chatbox-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- NEWS -->
-<section class="news-section" id="news">
-  <div class="container">
-    <div class="section-header">
-      <h2>📰 Tin tức & Thông báo</h2>
-      <p>Cập nhật mới nhất từ nhóm</p>
-    </div>
-    <div class="news-grid" id="news-grid">
-      <!-- Injected by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
-<footer class="footer" id="contact">
-  <div class="footer-main">
-    <div class="container">
-      <div class="footer-grid">
-        <div class="footer-col">
-          <h3 id="footer-site-name">Nhóm Học Liệu Giáo Viên</h3>
-          <p id="footer-tagline">Kho Tài Nguyên Giáo Dục Chất Lượng Cao</p>
-          <div class="footer-social" id="footer-social"></div>
-        </div>
-        <div class="footer-col">
-          <h4>Kho tài nguyên</h4>
-          <ul id="footer-resources"></ul>
-        </div>
-        <div class="footer-col">
-          <h4>Liên hệ</h4>
-          <p><i class="fas fa-envelope"></i> <span id="footer-email"></span></p>
-          <p><i class="fas fa-phone"></i> <span id="footer-phone"></span></p>
-        </div>
-        <div class="footer-col">
-          <h4>Thành viên</h4>
-          <p><a href="#" onclick="openLoginModal()"><i class="fas fa-sign-in-alt"></i> Đăng nhập</a></p>
-          <p><a href="/admin" target="_blank"><i class="fas fa-cog"></i> Quản trị Admin</a></p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <div class="container">
-      <p id="footer-text">© 2024 Nhóm Học Liệu Giáo Viên. All rights reserved.</p>
-    </div>
-  </div>
-</footer>
-
-<!-- BACK TO TOP -->
-<button class="back-to-top" id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="fas fa-chevron-up"></i></button>
-
-<!-- AUTH MODAL: Đăng nhập / Đăng ký -->
-<div class="modal-overlay" id="login-modal" onclick="closeLoginModal(event)">
-  <div class="modal-box auth-box">
-    <button class="modal-close" onclick="closeLoginModal()"><i class="fas fa-times"></i></button>
-    <div class="modal-logo">🎓</div>
-    <div class="auth-tabs">
-      <button type="button" class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Đăng nhập</button>
-      <button type="button" class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Đăng ký</button>
-    </div>
-
-    <!-- PANE: LOGIN -->
-    <div id="pane-login">
-      <form onsubmit="handleLogin(event)">
-        <div class="form-group">
-          <label><i class="fas fa-user"></i> Tên đăng nhập</label>
-          <input type="text" id="login-username" placeholder="Nhập tên đăng nhập" required>
-        </div>
-        <div class="form-group">
-          <label><i class="fas fa-lock"></i> Mật khẩu</label>
-          <input type="password" id="login-password" placeholder="Nhập mật khẩu" required>
-        </div>
-        <div class="form-group">
-          <label><i class="fas fa-shield-alt"></i> Mã xác nhận</label>
-          <div class="captcha-row">
-            <span id="login-captcha-img" class="captcha-img"></span>
-            <button type="button" class="captcha-refresh" onclick="loadCaptcha('login')" title="Đổi mã khác"><i class="fas fa-sync-alt"></i></button>
-            <input type="text" id="login-captcha" placeholder="Nhập mã" required autocomplete="off" maxlength="5">
-          </div>
-        </div>
-        <div id="login-error" class="form-error" style="display:none"></div>
-        <button type="submit" class="btn-submit" id="login-btn">Đăng nhập</button>
-      </form>
-      <div class="auth-divider"><span>hoặc</span></div>
-      <div class="google-btn-wrap" id="google-btn-login"></div>
-    </div>
-
-    <!-- PANE: REGISTER -->
-    <div id="pane-register" style="display:none">
-      <form onsubmit="handleRegister(event)">
-        <div class="form-grid">
-          <div class="form-group"><label>Tên đăng nhập *</label><input type="text" id="reg-username" required minlength="4" placeholder="Ít nhất 4 ký tự"></div>
-          <div class="form-group"><label>Mật khẩu *</label><input type="password" id="reg-password" required minlength="6" placeholder="Ít nhất 6 ký tự"></div>
-          <div class="form-group"><label>Họ và tên *</label><input type="text" id="reg-fullname" required placeholder="Nguyễn Văn A"></div>
-          <div class="form-group"><label>Ngày sinh *</label><input type="date" id="reg-birthdate" required></div>
-          <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="reg-zalo" required placeholder="09xxxxxxxx"></div>
-          <div class="form-group"><label>Email *</label><input type="email" id="reg-email" required placeholder="email@gmail.com"></div>
-          <div class="form-group full-row"><label>Bạn là *</label>
-            <div class="radio-row">
-              <label class="radio-opt"><input type="radio" name="reg-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
-              <label class="radio-opt"><input type="radio" name="reg-type" value="student"> 🎓 Học sinh</label>
+    <section class="container mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="md:col-span-2 bg-white p-6 rounded-xl shadow border border-gray-100 flex flex-col justify-between">
+            <div>
+                <h3 class="text-lg font-bold text-blue-900 mb-3"><i class="fa-solid fa-magnifying-glass mr-2"></i> Hệ Thống Tìm Kiếm Thông Minh</h3>
+                <p class="text-gray-500 text-sm mb-4">Tìm nhanh bài viết, hình ảnh, video sản phẩm bê tông...</p>
             </div>
-          </div>
-          <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="reg-workplace" required placeholder="VD: Trường THCS Lê Lợi"></div>
-          <div class="form-group"><label>Phường / Xã *</label><input type="text" id="reg-ward" required placeholder="VD: Phường Hồng Bàng"></div>
+            <div id="smart-search-root" class="w-full">
+                <input type="text" placeholder="Nhập từ khóa tìm kiếm..." class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600">
+            </div>
         </div>
-        <div id="register-error" class="form-error" style="display:none"></div>
-        <button type="submit" class="btn-submit" id="register-btn">Đăng ký tài khoản</button>
-      </form>
-      <div class="auth-divider"><span>hoặc đăng ký nhanh</span></div>
-      <div class="google-btn-wrap" id="google-btn-register"></div>
-    </div>
-  </div>
-</div>
-
-<!-- COMPLETE PROFILE MODAL (sau khi đăng ký nhanh Google) -->
-<div class="modal-overlay" id="profile-modal">
-  <div class="modal-box auth-box">
-    <div class="modal-logo">📝</div>
-    <h2>Hoàn thiện hồ sơ</h2>
-    <p>Vui lòng bổ sung thông tin bắt buộc để vào trang quản trị tài khoản</p>
-    <form onsubmit="handleCompleteProfile(event)">
-      <div class="form-grid">
-        <div class="form-group"><label>Họ và tên *</label><input type="text" id="pf-fullname" required></div>
-        <div class="form-group"><label>Ngày sinh *</label><input type="date" id="pf-birthdate" required></div>
-        <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="pf-zalo" required placeholder="09xxxxxxxx"></div>
-        <div class="form-group"><label>Email (từ Google)</label><input type="email" id="pf-email" required readonly></div>
-        <div class="form-group full-row"><label>Bạn là *</label>
-          <div class="radio-row">
-            <label class="radio-opt"><input type="radio" name="pf-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
-            <label class="radio-opt"><input type="radio" name="pf-type" value="student"> 🎓 Học sinh</label>
-          </div>
+        
+        <div class="bg-white p-6 rounded-xl shadow border border-gray-100 flex flex-col justify-center items-center text-center">
+            <div class="text-red-600 text-3xl mb-2"><i class="fa-solid fa-user-shield"></i></div>
+            <h3 class="text-lg font-bold text-gray-700 mb-2">Cổng Quản Trị Viên</h3>
+            <button onclick="handleGoogleLoginRedirect()" class="flex items-center justify-center bg-red-600 text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:bg-red-700 transition-all duration-300 w-full">
+                <i class="fa-brands fa-google mr-3"></i> Đăng Nhập Nhanh Qua Google
+            </button>
         </div>
-        <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="pf-workplace" required></div>
-        <div class="form-group"><label>Phường / Xã *</label><input type="text" id="pf-ward" required></div>
-      </div>
-      <div id="profile-error" class="form-error" style="display:none"></div>
-      <button type="submit" class="btn-submit" id="profile-btn">Lưu và tiếp tục</button>
-    </form>
-  </div>
-</div>
+    </section>
 
-<!-- ACCOUNT DASHBOARD MODAL -->
-<div class="modal-overlay" id="account-modal" onclick="closeAccountModal(event)">
-  <div class="modal-box auth-box">
-    <button class="modal-close" onclick="closeAccountModal()"><i class="fas fa-times"></i></button>
-    <div class="modal-logo">👤</div>
-    <h2>Tài khoản của tôi</h2>
-    <p id="account-role-label"></p>
-    <form onsubmit="handleAccountSave(event)">
-      <div class="form-grid">
-        <div class="form-group"><label>Họ và tên *</label><input type="text" id="ac-fullname" required></div>
-        <div class="form-group"><label>Ngày sinh *</label><input type="date" id="ac-birthdate" required></div>
-        <div class="form-group"><label>Số điện thoại Zalo *</label><input type="tel" id="ac-zalo" required></div>
-        <div class="form-group"><label>Email *</label><input type="email" id="ac-email" required></div>
-        <div class="form-group full-row"><label>Bạn là *</label>
-          <div class="radio-row">
-            <label class="radio-opt"><input type="radio" name="ac-type" value="teacher" required> 👨‍🏫 Giáo viên</label>
-            <label class="radio-opt"><input type="radio" name="ac-type" value="student"> 🎓 Học sinh</label>
-          </div>
+    <section class="container mx-auto px-4 py-12">
+        <div class="text-center mb-12">
+            <h2 class="text-2xl md:text-4xl font-extrabold text-blue-900 uppercase inline-block border-b-4 border-red-600 pb-2 tracking-wide">
+                Năng Lực Cốt Lõi
+            </h2>
         </div>
-        <div class="form-group"><label>Đơn vị công tác / học tập *</label><input type="text" id="ac-workplace" required></div>
-        <div class="form-group"><label>Phường / Xã *</label><input type="text" id="ac-ward" required></div>
-      </div>
-      <div id="account-error" class="form-error" style="display:none"></div>
-      <div id="account-success" class="form-success" style="display:none">✅ Đã lưu thay đổi thành công</div>
-      <button type="submit" class="btn-submit" id="account-btn">Lưu thay đổi</button>
-    </form>
-  </div>
-</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="bg-white p-8 shadow-lg rounded-xl border-t-4 border-blue-800 hover:-translate-y-2 transition-all duration-300">
+                <div class="text-4xl mb-4 text-blue-600 text-center"><i class="fa-solid fa-trowel-bricks"></i></div>
+                <h3 class="text-xl font-bold text-blue-900 mb-3 text-center">Bê Tông Thương Phẩm</h3>
+                <p class="text-gray-600 text-sm text-justify">Cung cấp bê tông tươi mác từ M100 đến M600, hệ thống trạm trộn tự động hóa.</p>
+            </div>
+            <div class="bg-white p-8 shadow-lg rounded-xl border-t-4 border-blue-800 hover:-translate-y-2 transition-all duration-300">
+                <div class="text-4xl mb-4 text-blue-600 text-center"><i class="fa-solid fa-building-columns"></i></div>
+                <h3 class="text-xl font-bold text-blue-900 mb-3 text-center">Cấu Kiện Đúc Sẵn</h3>
+                <p class="text-gray-600 text-sm text-justify">Sản xuất cọc ống ly tâm, cọc vuông đúc sẵn chất lượng cao cho nền móng công nghiệp.</p>
+            </div>
+            <div class="bg-white p-8 shadow-lg rounded-xl border-t-4 border-blue-800 hover:-translate-y-2 transition-all duration-300">
+                <div class="text-4xl mb-4 text-blue-600 text-center"><i class="fa-solid fa-truck-monster"></i></div>
+                <h3 class="text-xl font-bold text-blue-900 mb-3 text-center">Dịch Vụ Bơm Bê Tông</h3>
+                <p class="text-gray-600 text-sm text-justify">Đội ngũ xe bơm cần linh hoạt 37m - 56m và bơm tĩnh chuyên dụng, đáp ứng mọi tiến độ.</p>
+            </div>
+        </div>
+    </section>
 
-<!-- LIGHTBOX -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
-  <button class="lightbox-close" onclick="closeLightbox()"><i class="fas fa-times"></i></button>
-  <button class="lightbox-prev" onclick="lightboxNav(-1)"><i class="fas fa-chevron-left"></i></button>
-  <img class="lightbox-img" id="lightbox-img" src="" alt="">
-  <button class="lightbox-next" onclick="lightboxNav(1)"><i class="fas fa-chevron-right"></i></button>
-  <p class="lightbox-caption" id="lightbox-caption"></p>
-</div>
+    <section class="bg-gray-200 py-16 border-t border-gray-300">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-2xl md:text-3xl font-extrabold text-blue-900 uppercase mb-8"><i class="fa-solid fa-video mr-2 text-red-600"></i> Video Hoạt Động Thực Tế</h2>
+            <div id="video-gallery-root" class="w-full">
+                <p class="text-gray-500 text-sm">[Danh sách Video và Module tải Video cũ của anh hiển thị ở đây]</p>
+            </div>
+        </div>
+    </section>
 
-<!-- VIDEO MODAL -->
-<div class="modal-overlay" id="video-modal" onclick="closeVideoModal(event)">
-  <div class="modal-box modal-video">
-    <button class="modal-close" onclick="closeVideoModal()"><i class="fas fa-times"></i></button>
-    <div class="video-wrapper" id="video-wrapper"></div>
-  </div>
-</div>
-
-<!-- SMART SEARCH OVERLAY & AI PANEL -->
-<div class="search-overlay" id="search-overlay"></div>
-<div class="search-ai-panel" id="search-ai-panel">
-  <div class="search-ai-header">
-    <span><i class="fas fa-robot"></i> Trợ lý AI tìm giúp bạn</span>
-    <button class="search-ai-close" id="search-ai-close"><i class="fas fa-times"></i></button>
-  </div>
-  <div class="search-ai-messages" id="search-ai-messages"></div>
-  <form class="search-ai-input-row" id="search-ai-form">
-    <input type="text" id="search-ai-input" placeholder="Hỏi trợ lý AI tìm tài liệu, video, thầy cô..." autocomplete="off">
-    <button type="submit" id="search-ai-send"><i class="fas fa-paper-plane"></i></button>
-  </form>
-</div>
-
-<script src="/js/main.js"></script>
-<script src="/js/search.js"></script>
-<!-- Hien/an mat khau (nut con mat) - toan site -->
-<script>
-(function(){
-  function addEye(inp){
-    if(inp.dataset.pwEye) return; inp.dataset.pwEye='1';
-    var wrap=document.createElement('span');
-    wrap.style.cssText='position:relative;display:block;width:100%';
-    if(!inp.parentNode) return;
-    inp.parentNode.insertBefore(wrap,inp); wrap.appendChild(inp);
-    var pr=parseInt(getComputedStyle(inp).paddingRight)||0;
-    inp.style.paddingRight=Math.max(pr,42)+'px';
-    var btn=document.createElement('button');
-    btn.type='button'; btn.tabIndex=-1; btn.title='Hien/an mat khau';
-    btn.setAttribute('aria-label','Hien/an mat khau');
-    btn.innerHTML='<i class="fas fa-eye"></i>';
-    btn.style.cssText='position:absolute;top:0;right:0;height:100%;width:42px;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:#64748b;font-size:15px;z-index:4;padding:0';
-    btn.addEventListener('click',function(){
-      var show=inp.type==='password';
-      inp.type=show?'text':'password';
-      btn.innerHTML='<i class="fas fa-eye'+(show?'-slash':'')+'"></i>';
-    });
-    wrap.appendChild(btn);
-  }
-  function scan(){ document.querySelectorAll('input[type=password]').forEach(addEye); }
-  var pending=false;
-  function schedule(){ if(pending)return; pending=true; setTimeout(function(){pending=false;scan();},120); }
-  if(document.readyState!=='loading') scan(); else document.addEventListener('DOMContentLoaded',scan);
-  new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
-})();
-</script>
+    <script>
+        function handleGoogleLoginRedirect() {
+            const googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth";
+            const clientId = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"; 
+            const redirectUri = window.location.origin; 
+            window.location.href = `${googleAuthUrl}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=email%20profile`;
+        }
+    </script>
 </body>
 </html>
