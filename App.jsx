@@ -1,34 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 
-// Thay bằng URL và Key thực tế của anh trên Supabase Dashboard
-const supabaseUrl = 'https://clalkraxfaeqbkeaikow.supabase.co'; 
-const supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY'; // Anh lấy ở phần Project API trong Supabase
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Anh tạo các component cho từng trang con nhé
+const Home = () => <h1>Trang Chủ</h1>;
+const BeTong = () => <h1>Trang Bê tông thương phẩm</h1>;
+const DuAn = () => <h1>Trang Dự án tiêu biểu</h1>;
 
 function App() {
-  const [data, setData] = useState([]);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchData() {
-    let { data: betong, error } = await supabase.from('ten_bang_cua_anh').select('*');
-    if (error) console.log('Lỗi rồi anh ơi:', error);
-    else setData(betong);
-  }
-
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Siêu phẩm Bê tông Cửa Âu</h1>
-      <ul>
-        {data.map((item, index) => (
-          <li key={index}>{item.name}</li>
-        ))}
-      </ul>
-    </div>
+    <Router>
+      <nav>
+        <Link to="/">Trang Chủ</Link> | 
+        <Link to="/be-tong-thuong-pham"> Bê tông</Link> | 
+        <Link to="/du-an-tieu-bieu"> Dự án</Link>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/be-tong-thuong-pham" element={<BeTong />} />
+        <Route path="/du-an-tieu-bieu" element={<DuAn />} />
+      </Routes>
+    </Router>
   );
 }
 
